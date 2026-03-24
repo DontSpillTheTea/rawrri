@@ -1,11 +1,13 @@
 use std::{
     env,
+    io::{BufRead, BufReader},
     fs::OpenOptions,
     io::Write,
     process::{Child, Command, Stdio},
+    sync::mpsc,
     sync::Mutex,
     thread::sleep,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -17,8 +19,15 @@ pub struct PlaybackSnapshot {
     pub active_pair_id: Option<String>,
     pub is_playing: bool,
     pub playhead_sec: f64,
+    pub pair_duration_sec: Option<f64>,
+    pub front_time_sec: Option<f64>,
+    pub rear_time_sec: Option<f64>,
+    pub front_duration_sec: Option<f64>,
+    pub rear_duration_sec: Option<f64>,
+    pub sync_delta_sec: Option<f64>,
     pub front_loaded: bool,
     pub rear_loaded: bool,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -26,6 +35,15 @@ pub struct PlaybackState {
     pub active_pair_id: Option<String>,
     pub is_playing: bool,
     pub playhead_sec: f64,
+    pub pair_duration_sec: Option<f64>,
+    pub front_time_sec: Option<f64>,
+    pub rear_time_sec: Option<f64>,
+    pub front_duration_sec: Option<f64>,
+    pub rear_duration_sec: Option<f64>,
+    pub sync_delta_sec: Option<f64>,
+    pub last_error: Option<String>,
+    pub play_started_at: Option<Instant>,
+    pub playhead_started_sec: f64,
 }
 
 #[derive(Default)]
@@ -44,6 +62,7 @@ struct PlayerInstance {
     side: String,
     ipc_path: String,
     child: Child,
+    next_request_id: u64,
 }
 
 impl PlaybackManager {
@@ -59,6 +78,15 @@ impl PlaybackManager {
         self.state.active_pair_id = Some(pair_id.clone());
         self.state.playhead_sec = 0.0;
         self.state.is_playing = false;
+        self.state.play_started_at = None;
+        self.state.playhead_started_sec = 0.0;
+        self.state.front_time_sec = None;
+        self.state.rear_time_sec = None;
+        self.state.front_duration_sec = None;
+        self.state.rear_duration_sec = None;
+        self.state.pair_duration_sec = None;
+        self.state.sync_delta_sec = None;
+        self.state.last_error = None;
         println!(
             "playback.load_pair pair_id={} front_present={} rear_present={} front_wid={:?} rear_wid={:?}",
             pair_id,
@@ -88,7 +116,15 @@ impl PlaybackManager {
     }
 
     pub fn set_playing(&mut self, is_playing: bool) -> Result<PlaybackSnapshot, String> {
+        self.update_estimated_playhead();
         self.state.is_playing = is_playing;
+        if is_playing {
+            self.state.play_started_at = Some(Instant::now());
+            self.state.playhead_started_sec = self.state.playhead_sec;
+        } else {
+            self.state.play_started_at = None;
+            self.state.playhead_started_sec = self.state.playhead_sec;
+        }
         println!("playback.set_playing is_playing={}", is_playing);
 
         if let Some(front) = self.front.as_mut() {
@@ -109,6 +145,14 @@ impl PlaybackManager {
     pub fn seek_to(&mut self, playhead_sec: f64) -> Result<PlaybackSnapshot, String> {
         let clamped = playhead_sec.max(0.0);
         self.state.playhead_sec = clamped;
+        self.state.playhead_started_sec = clamped;
+        self.state.play_started_at = if self.state.is_playing {
+            Some(Instant::now())
+        } else {
+            None
+        };
+        self.state.front_time_sec = Some(clamped);
+        self.state.rear_time_sec = Some(clamped);
         println!("playback.seek_to playhead_sec={:.3}", clamped);
 
         if let Some(front) = self.front.as_mut() {
@@ -133,9 +177,97 @@ impl PlaybackManager {
             active_pair_id: self.state.active_pair_id.clone(),
             is_playing: self.state.is_playing,
             playhead_sec: self.state.playhead_sec,
+            pair_duration_sec: self.state.pair_duration_sec,
+            front_time_sec: self.state.front_time_sec,
+            rear_time_sec: self.state.rear_time_sec,
+            front_duration_sec: self.state.front_duration_sec,
+            rear_duration_sec: self.state.rear_duration_sec,
+            sync_delta_sec: self.state.sync_delta_sec,
             front_loaded: self.front.is_some(),
             rear_loaded: self.rear.is_some(),
+            last_error: self.state.last_error.clone(),
         }
+    }
+
+    pub fn refresh_state(&mut self) -> PlaybackSnapshot {
+        self.update_estimated_playhead();
+
+        let mut first_error: Option<String> = None;
+
+        let front_time = match self.front.as_mut() {
+            Some(front) => match front.get_property_f64("time-pos") {
+                Ok(value) => value,
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
+                    None
+                }
+            },
+            None => None,
+        };
+        let rear_time = match self.rear.as_mut() {
+            Some(rear) => match rear.get_property_f64("time-pos") {
+                Ok(value) => value,
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
+                    None
+                }
+            },
+            None => None,
+        };
+        let front_duration = match self.front.as_mut() {
+            Some(front) => match front.get_property_f64("duration") {
+                Ok(value) => value,
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
+                    None
+                }
+            },
+            None => None,
+        };
+        let rear_duration = match self.rear.as_mut() {
+            Some(rear) => match rear.get_property_f64("duration") {
+                Ok(value) => value,
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
+                    None
+                }
+            },
+            None => None,
+        };
+
+        self.state.front_time_sec = front_time.or(self.state.front_time_sec);
+        self.state.rear_time_sec = rear_time.or(self.state.rear_time_sec);
+        self.state.front_duration_sec = front_duration.or(self.state.front_duration_sec);
+        self.state.rear_duration_sec = rear_duration.or(self.state.rear_duration_sec);
+        self.state.pair_duration_sec = match (self.state.front_duration_sec, self.state.rear_duration_sec) {
+            (Some(front), Some(rear)) => Some(front.max(rear)),
+            (Some(front), None) => Some(front),
+            (None, Some(rear)) => Some(rear),
+            (None, None) => None,
+        };
+
+        self.state.sync_delta_sec = match (self.state.front_time_sec, self.state.rear_time_sec) {
+            (Some(front), Some(rear)) => Some(rear - front),
+            _ => None,
+        };
+
+        self.state.playhead_sec = match (self.state.front_time_sec, self.state.rear_time_sec) {
+            (Some(front), Some(rear)) => (front + rear) / 2.0,
+            (Some(front), None) => front,
+            (None, Some(rear)) => rear,
+            (None, None) => self.state.playhead_sec,
+        };
+
+        self.state.last_error = first_error;
+        self.snapshot()
     }
 
     fn shutdown_players(&mut self) {
@@ -148,6 +280,19 @@ impl PlaybackManager {
         self.front = None;
         self.rear = None;
         self.state.is_playing = false;
+        self.state.play_started_at = None;
+        self.state.playhead_started_sec = 0.0;
+    }
+
+    fn update_estimated_playhead(&mut self) {
+        if !self.state.is_playing {
+            return;
+        }
+        let Some(started_at) = self.state.play_started_at else {
+            return;
+        };
+        let elapsed = Instant::now().duration_since(started_at).as_secs_f64();
+        self.state.playhead_sec = self.state.playhead_started_sec + elapsed;
     }
 }
 
@@ -206,6 +351,7 @@ impl PlayerInstance {
             side: side.to_string(),
             ipc_path,
             child,
+            next_request_id: 1,
         })
     }
 
@@ -255,6 +401,79 @@ impl PlayerInstance {
             self.ipc_path,
             last_err.unwrap_or_else(|| "unknown error".to_string())
         ))
+    }
+
+    fn get_property_f64(&mut self, property: &str) -> Result<Option<f64>, String> {
+        let request_id = self.next_request_id;
+        self.next_request_id = self.next_request_id.saturating_add(1);
+        let command = json!({
+            "command": ["get_property", property],
+            "request_id": request_id
+        });
+        let response = self.send_command_and_wait(command, request_id)?;
+        let error = response.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+        if error != "success" {
+            return Ok(None);
+        }
+        Ok(response.get("data").and_then(|value| value.as_f64()))
+    }
+
+    fn send_command_and_wait(
+        &self,
+        command: serde_json::Value,
+        request_id: u64,
+    ) -> Result<serde_json::Value, String> {
+        let serialized = serde_json::to_string(&command)
+            .map_err(|err| format!("Failed to serialize mpv command: {}", err))?;
+        let payload = format!("{serialized}\n");
+        let ipc_path = self.ipc_path.clone();
+        let side = self.side.clone();
+        let (tx, rx) = mpsc::channel();
+
+        std::thread::spawn(move || {
+            let outcome: Result<serde_json::Value, String> = (|| {
+                let mut stream = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&ipc_path)
+                    .map_err(|err| format!("Failed to open mpv IPC {}: {}", ipc_path, err))?;
+                stream
+                    .write_all(payload.as_bytes())
+                    .map_err(|err| format!("Failed writing to mpv IPC {}: {}", ipc_path, err))?;
+
+                let mut reader = BufReader::new(stream);
+                for _ in 0..64 {
+                    let mut line = String::new();
+                    let read = reader
+                        .read_line(&mut line)
+                        .map_err(|err| format!("Failed reading mpv IPC {}: {}", ipc_path, err))?;
+                    if read == 0 {
+                        break;
+                    }
+                    let value: serde_json::Value = match serde_json::from_str(line.trim()) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    let response_id = value.get("request_id").and_then(|id| id.as_u64());
+                    if response_id == Some(request_id) {
+                        return Ok(value);
+                    }
+                }
+                Err(format!(
+                    "No matching response for request_id={} on {}",
+                    request_id, ipc_path
+                ))
+            })();
+            let _ = tx.send(outcome);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(result) => result,
+            Err(_) => Err(format!(
+                "Timed out waiting for mpv IPC response side={} request_id={}",
+                side, request_id
+            )),
+        }
     }
 
     fn shutdown(&mut self) {

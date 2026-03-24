@@ -96,11 +96,11 @@ fn playback_stop(playback: State<'_, PlaybackController>) -> Result<PlaybackSnap
 
 #[tauri::command]
 fn playback_get_state(playback: State<'_, PlaybackController>) -> Result<PlaybackSnapshot, String> {
-    let manager = playback
+    let mut manager = playback
         .manager
         .lock()
         .map_err(|_| "Playback manager lock poisoned".to_string())?;
-    Ok(manager.snapshot())
+    Ok(manager.refresh_state())
 }
 
 #[tauri::command]

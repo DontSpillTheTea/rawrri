@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  playbackGetState,
   playbackLoadPair,
   playbackSeek,
   playbackSetPlaying,
@@ -19,6 +20,7 @@ const DEFAULT_THRESHOLD_MS = 3000;
 const SMALL_SEEK_SECONDS = 2;
 const LARGE_SEEK_SECONDS = 10;
 const SLIDER_DEBOUNCE_MS = 50;
+const PLAYBACK_POLL_MS = 250;
 
 export default function App() {
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -86,6 +88,23 @@ export default function App() {
         setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
       });
   }, [selectedPair, assetsById]);
+
+  useEffect(() => {
+    if (!selectedPair) return;
+    const timer = window.setInterval(() => {
+      void playbackGetState()
+        .then((snapshot) => {
+          setPlayback(snapshot);
+          if (snapshot.lastError) {
+            setPlaybackError(snapshot.lastError);
+          }
+        })
+        .catch((playErr) => {
+          setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+        });
+    }, PLAYBACK_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [selectedPair?.id]);
 
   async function pickFolderAndScan() {
     setError(null);
@@ -318,14 +337,23 @@ export default function App() {
           </button>
           <span>
             Status: {playback?.isPlaying ? "playing" : "paused"} | Playhead:{" "}
-            {fmtDuration(playback?.playheadSec ?? 0)}
+            {fmtDuration(playback?.playheadSec ?? 0)} / {fmtDuration(playback?.pairDurationSec ?? 0)}
           </span>
+        </div>
+        <div className="status-row diagnostics-row">
+          <span>
+            Front: {fmtDuration(playback?.frontTimeSec ?? 0)} / {fmtDuration(playback?.frontDurationSec ?? 0)}
+          </span>
+          <span>
+            Rear: {fmtDuration(playback?.rearTimeSec ?? 0)} / {fmtDuration(playback?.rearDurationSec ?? 0)}
+          </span>
+          <span>Sync delta: {(playback?.syncDeltaSec ?? 0).toFixed(2)}s</span>
         </div>
         <input
           className="scrub-slider"
           type="range"
           min={0}
-          max={3600}
+          max={Math.max(playback?.pairDurationSec ?? 0, 1)}
           step={0.1}
           value={sliderPlayheadSec}
           onChange={(event) => onSliderInput(Number(event.target.value))}

@@ -55,8 +55,15 @@ export interface PlaybackSnapshot {
   activePairId: string | null;
   isPlaying: boolean;
   playheadSec: number;
+  pairDurationSec: number | null;
+  frontTimeSec: number | null;
+  rearTimeSec: number | null;
+  frontDurationSec: number | null;
+  rearDurationSec: number | null;
+  syncDeltaSec: number | null;
   frontLoaded: boolean;
   rearLoaded: boolean;
+  lastError: string | null;
 }
 
 export interface VideoRect {
