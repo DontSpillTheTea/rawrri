@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PlaybackSnapshot, ScanResult } from "../types";
+import type { PlaybackSnapshot, ScanResult, VideoRect, VideoSurfaceSnapshot } from "../types";
 
 interface ScanFolderArgs {
   rootPath: string;
@@ -35,4 +35,8 @@ export async function playbackSeek(playheadSec: number): Promise<PlaybackSnapsho
 
 export async function playbackStop(): Promise<PlaybackSnapshot> {
   return invoke<PlaybackSnapshot>("playback_stop");
+}
+
+export async function updateVideoLayout(front: VideoRect, rear: VideoRect): Promise<VideoSurfaceSnapshot> {
+  return invoke<VideoSurfaceSnapshot>("update_video_layout", { front, rear });
 }

@@ -1,10 +1,12 @@
-import type { PlaybackSnapshot, RecordingPair, VideoAsset } from "../types";
+import { useEffect, useRef } from "react";
+import type { PlaybackSnapshot, RecordingPair, VideoAsset, VideoRect } from "../types";
 import { fmtBytes, fmtDate } from "../lib/format";
 
 interface PairDetailsProps {
   pair: RecordingPair | null;
   assetsById: Map<string, VideoAsset>;
   playback: PlaybackSnapshot | null;
+  onVideoLayoutChange?: (front: VideoRect, rear: VideoRect) => void;
 }
 
 function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }) {
@@ -28,7 +30,46 @@ function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }
   );
 }
 
-export function PairDetails({ pair, assetsById, playback }: PairDetailsProps) {
+export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }: PairDetailsProps) {
+  const frontSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const rearSurfaceRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!onVideoLayoutChange) return;
+    const frontElement = frontSurfaceRef.current;
+    const rearElement = rearSurfaceRef.current;
+    if (!frontElement || !rearElement) return;
+
+    const emitLayout = () => {
+      const frontRect = frontElement.getBoundingClientRect();
+      const rearRect = rearElement.getBoundingClientRect();
+      onVideoLayoutChange(
+        {
+          x: Math.round(frontRect.x),
+          y: Math.round(frontRect.y),
+          width: Math.round(frontRect.width),
+          height: Math.round(frontRect.height)
+        },
+        {
+          x: Math.round(rearRect.x),
+          y: Math.round(rearRect.y),
+          width: Math.round(rearRect.width),
+          height: Math.round(rearRect.height)
+        }
+      );
+    };
+
+    emitLayout();
+    const observer = new ResizeObserver(() => emitLayout());
+    observer.observe(frontElement);
+    observer.observe(rearElement);
+    window.addEventListener("resize", emitLayout);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", emitLayout);
+    };
+  }, [onVideoLayoutChange, pair?.id]);
+
   if (!pair) {
     return (
       <div className="panel detail-panel">
@@ -51,11 +92,11 @@ export function PairDetails({ pair, assetsById, playback }: PairDetailsProps) {
         <div>Source: {pair.sourceFolder}</div>
       </div>
       <div className="preview-grid">
-        <div className="video-placeholder">
-          {playback?.frontLoaded ? "Front playing in external mpv window" : "Front side unavailable"}
+        <div ref={frontSurfaceRef} className="video-placeholder">
+          {playback?.frontLoaded ? "Front embedded mpv surface" : "Front side unavailable"}
         </div>
-        <div className="video-placeholder">
-          {playback?.rearLoaded ? "Rear playing in external mpv window" : "Rear side unavailable"}
+        <div ref={rearSurfaceRef} className="video-placeholder">
+          {playback?.rearLoaded ? "Rear embedded mpv surface" : "Rear side unavailable"}
         </div>
       </div>
       <div className="asset-grid">

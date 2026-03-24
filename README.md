@@ -15,7 +15,7 @@ Early prototype (Milestone 0/1 foundation):
 - K6-compatible filename parsing and deterministic front/rear pairing heuristic
 - Pair list UI with selection and missing-side warnings
 - Keyboard navigation (`J/K` or `Up/Down`) for previous/next pair
-- Dual mpv playback control via two IPC-driven player instances (external windows in v0)
+- Dual mpv playback control via two IPC-driven player instances embedded in the main app window
 
 ## Naming assumptions (current profile)
 
@@ -127,7 +127,11 @@ Policy for now: keep `.test_examples` as local developer fixture data unless oth
 
 ## Current limitations
 
-- mpv playback currently uses external native windows (embedding in Tauri UI comes later)
+- Embedded mpv surfaces currently rely on Win32 child-window integration (Windows-first path)
+- Embedded playback is still WIP:
+  - transport slider currently uses a fixed range and does not yet reflect true clip duration
+  - occasional pane flashing/z-order contention can occur while embedded surfaces update
+  - per-side live timecode display is not yet surfaced in the UI
 - No ffprobe metadata extraction yet (duration/resolution/codec placeholders)
 - Cache is basic and currently keyed by folder path
 - No export pipeline yet

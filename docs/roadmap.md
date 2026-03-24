@@ -30,10 +30,10 @@
 ## Milestone 2: dual playback (mpv)
 
 - [x] Integrate mpv process control via IPC (two instances)
-- [ ] Render front/rear panes embedded in app window (currently external mpv windows)
+- [x] Render front/rear panes embedded in app window via Win32 child surfaces
 - [x] Shared logical playhead model
 - [x] Synchronized play/pause/seek
-- [ ] Keyboard transport shortcuts
+- [x] Keyboard transport shortcuts
 - [ ] Optional one-click resync
 
 ## Milestone 3: speed polish
