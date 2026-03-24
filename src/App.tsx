@@ -38,7 +38,7 @@ export default function App() {
     const folderPath = await open({
       directory: true,
       multiple: false,
-      title: "Select INNOVV K6 footage folder"
+      title: "Select dashcam footage folder"
     });
 
     if (!folderPath || Array.isArray(folderPath)) return;
@@ -79,8 +79,8 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <h1>k6player</h1>
-          <p>Fast paired browser for INNOVV K6 front/rear footage.</p>
+          <h1>rawrii</h1>
+          <p>Fast paired browser for front/rear dashcam footage.</p>
         </div>
         <div className="toolbar">
           <button type="button" onClick={pickFolderAndScan} disabled={isScanning}>

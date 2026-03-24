@@ -1,10 +1,10 @@
-# k6player
+# rawrii
 
-Fast desktop viewer for INNOVV K6 front/rear dashcam footage, with paired playback and basic clip export.
+Fast desktop viewer for paired front/rear dashcam footage, with basic clip export.
 
 ## What problem this solves
 
-INNOVV K6 stores front and rear streams as separate files. Reviewing footage manually in Windows file explorer is slow and painful. `k6player` groups those files into logical recordings so browsing and playback feel like one workflow.
+Many dashcam systems store front and rear streams as separate files. Reviewing footage manually in Windows file explorer is slow and painful. `rawrii` groups those files into logical recordings so browsing and playback feel like one workflow.
 
 ## Current status
 
@@ -12,14 +12,14 @@ Early prototype (Milestone 0/1 foundation):
 
 - Tauri + React + TypeScript + Rust project layout
 - Folder scan command in Rust
-- K6 filename parsing and deterministic front/rear pairing heuristic
+- K6-compatible filename parsing and deterministic front/rear pairing heuristic
 - Pair list UI with selection and missing-side warnings
 - Keyboard navigation (`J/K` or `Up/Down`) for previous/next pair
 - Placeholder dual-pane area for upcoming mpv integration
 
-## Naming assumptions (currently supported)
+## Naming assumptions (current profile)
 
-Expected K6-like pattern:
+Current built-in profile is K6-compatible naming:
 
 - `YYYYMMDD_HHMMSS_<sequence>_F.MP4`
 - `YYYYMMDD_HHMMSS_<sequence>_R.MP4`
@@ -41,7 +41,7 @@ Examples:
 
 ### Windows prerequisites
 
-`k6player` targets Windows 11 first and uses Rust MSVC builds under Tauri.
+`rawrii` targets Windows 11 first and uses Rust MSVC builds under Tauri.
 
 Install:
 
@@ -104,6 +104,8 @@ npm run tauri:build
 - Milestone 5: ffmpeg export (side-by-side/front/rear modes)
 
 See `docs/roadmap.md` for details.
+
+Planned direction: expand camera profiles beyond the current K6-compatible baseline.
 
 ## Real sample validation (`.test_examples`)
 

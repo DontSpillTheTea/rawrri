@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "k6player",
+  "productName": "rawrii",
   "version": "0.1.0",
-  "identifier": "com.anthonyma.k6player",
+  "identifier": "com.anthonyma.rawrii",
   "build": {
     "frontendDist": "../dist",
     "beforeDevCommand": "npm run dev",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "k6player",
+        "title": "rawrii",
         "width": 1400,
         "height": 900,
         "resizable": true

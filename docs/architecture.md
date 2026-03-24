@@ -31,7 +31,7 @@ Example: `tauri` and `tauri-build` may use different minor version lines while s
 ### Backend (`src-tauri/src/`)
 
 - `scanner`: folder traversal and file ingest
-- `filename_parser`: deterministic K6 filename parser
+- `filename_parser`: deterministic dashcam filename parser (currently K6-compatible profile)
 - `pairing`: nearest-neighbor pairing with configurable threshold
 - `metadata`: ffprobe extraction pipeline (planned)
 - `cache`: persistent folder scan cache
@@ -53,7 +53,7 @@ These align with the PRD data contracts in `docs/prd.md`.
 
 ## Pairing heuristic (current implementation)
 
-1. Parse valid K6 candidates only.
+1. Parse valid candidates for supported naming profiles (currently K6-compatible).
 2. Split by side.
 3. Sort by parsed timestamp.
 4. For each front asset, choose nearest unused rear within threshold.

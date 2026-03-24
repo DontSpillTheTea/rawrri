@@ -1,8 +1,10 @@
-# PRD: k6player
+# PRD: rawrii
 
 ## Mission
 
-Build a Windows-first desktop app for very fast browsing and reviewing INNOVV K6 front/rear footage. Front and rear files are treated as one logical recording in the UI.
+Build a Windows-first desktop app for very fast browsing and reviewing paired front/rear dashcam footage. Front and rear files are treated as one logical recording in the UI.
+
+Scope note: current implementation starts with a K6-compatible naming profile, but the product direction is multi-brand and multi-profile over time.
 
 ## Primary goals
 
@@ -39,7 +41,7 @@ Build a Windows-first desktop app for very fast browsing and reviewing INNOVV K6
 ### Scan + ingest
 
 - Choose folder
-- Parse K6 file names
+- Parse supported dashcam file names (starting with K6-compatible patterns)
 - Detect side (`_F` / `_R`)
 - Pair with deterministic nearest-neighbor timestamp heuristic
 - Handle missing/ambiguous/corrupt files gracefully
