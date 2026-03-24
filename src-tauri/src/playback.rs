@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::OpenOptions,
     io::Write,
     process::{Child, Command, Stdio},
@@ -51,20 +52,24 @@ impl PlaybackManager {
         pair_id: String,
         front_path: Option<String>,
         rear_path: Option<String>,
+        front_wid: Option<u64>,
+        rear_wid: Option<u64>,
     ) -> Result<PlaybackSnapshot, String> {
         self.shutdown_players();
         self.state.active_pair_id = Some(pair_id.clone());
         self.state.playhead_sec = 0.0;
         self.state.is_playing = false;
         println!(
-            "playback.load_pair pair_id={} front_present={} rear_present={}",
+            "playback.load_pair pair_id={} front_present={} rear_present={} front_wid={:?} rear_wid={:?}",
             pair_id,
             front_path.is_some(),
-            rear_path.is_some()
+            rear_path.is_some(),
+            front_wid,
+            rear_wid
         );
 
         if let Some(path) = front_path {
-            let mut player = PlayerInstance::spawn("front")?;
+            let mut player = PlayerInstance::spawn("front", front_wid)?;
             player.load_file(&path)?;
             player.set_paused(true)?;
             player.seek(0.0)?;
@@ -72,7 +77,7 @@ impl PlaybackManager {
         }
 
         if let Some(path) = rear_path {
-            let mut player = PlayerInstance::spawn("rear")?;
+            let mut player = PlayerInstance::spawn("rear", rear_wid)?;
             player.load_file(&path)?;
             player.set_paused(true)?;
             player.seek(0.0)?;
@@ -147,19 +152,42 @@ impl PlaybackManager {
 }
 
 impl PlayerInstance {
-    fn spawn(side: &str) -> Result<Self, String> {
+    fn spawn(side: &str, wid: Option<u64>) -> Result<Self, String> {
         let ipc_path = named_pipe_path(side);
         let title = format!("rawrii {side}");
-        let args = vec![
+        let debug_no_config = env::var("RAWRII_MPV_NO_CONFIG")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let mut args = vec![
             "--idle=yes".to_string(),
-            "--force-window=yes".to_string(),
             "--pause".to_string(),
             "--keep-open=yes".to_string(),
             "--no-terminal".to_string(),
             format!("--title={title}"),
             format!("--input-ipc-server={ipc_path}"),
         ];
-        println!("playback.spawn side={} command=mpv {:?}", side, args);
+        if debug_no_config {
+            // Debug experiment path to rule out user mpv.conf interference.
+            args.push("--no-config".to_string());
+        }
+        if let Some(wid) = wid {
+            args.push(format!("--wid={wid}"));
+        } else if cfg!(debug_assertions) {
+            println!(
+                "playback.spawn side={} embedding unavailable, using dev fallback external window",
+                side
+            );
+            args.push("--force-window=yes".to_string());
+        } else {
+            return Err(format!(
+                "mpv embedding failed for {} and release fallback is disabled",
+                side
+            ));
+        }
+        println!(
+            "playback.spawn side={} command=mpv debug_no_config={} args={:?}",
+            side, debug_no_config, args
+        );
 
         let child = Command::new("mpv")
             .args(args)

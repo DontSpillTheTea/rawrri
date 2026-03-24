@@ -9,10 +9,12 @@ mod playback;
 mod scanner;
 mod settings;
 mod state;
+mod video_surface;
 
 use playback::{PlaybackController, PlaybackSnapshot};
 use scanner::scan_folder as scan_folder_impl;
 use tauri::State;
+use video_surface::{VideoRect, VideoSurfaceController, VideoSurfaceSnapshot};
 
 #[tauri::command]
 fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms: Option<i64>) -> Result<models::ScanResult, String> {
@@ -33,15 +35,24 @@ fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms:
 #[tauri::command]
 fn playback_load_pair(
     playback: State<'_, PlaybackController>,
+    surfaces: State<'_, VideoSurfaceController>,
+    window: tauri::Window,
     pair_id: String,
     front_path: Option<String>,
     rear_path: Option<String>,
 ) -> Result<PlaybackSnapshot, String> {
+    let surface_snapshot = surfaces.ensure_for_window(&window)?;
     let mut manager = playback
         .manager
         .lock()
         .map_err(|_| "Playback manager lock poisoned".to_string())?;
-    manager.load_pair(pair_id, front_path, rear_path)
+    manager.load_pair(
+        pair_id,
+        front_path,
+        rear_path,
+        surface_snapshot.front_wid,
+        surface_snapshot.rear_wid,
+    )
 }
 
 #[tauri::command]
@@ -92,12 +103,23 @@ fn playback_get_state(playback: State<'_, PlaybackController>) -> Result<Playbac
     Ok(manager.snapshot())
 }
 
+#[tauri::command]
+fn update_video_layout(
+    surfaces: State<'_, VideoSurfaceController>,
+    window: tauri::Window,
+    front: VideoRect,
+    rear: VideoRect,
+) -> Result<VideoSurfaceSnapshot, String> {
+    surfaces.update_layout(&window, front, rear)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init_logging();
 
     tauri::Builder::default()
         .manage(PlaybackController::default())
+        .manage(VideoSurfaceController::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             scan_folder,
@@ -106,7 +128,8 @@ pub fn run() {
             playback_set_playing,
             playback_seek,
             playback_stop,
-            playback_get_state
+            playback_get_state,
+            update_video_layout
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

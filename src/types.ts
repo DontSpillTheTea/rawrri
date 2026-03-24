@@ -58,3 +58,34 @@ export interface PlaybackSnapshot {
   frontLoaded: boolean;
   rearLoaded: boolean;
 }
+
+export interface VideoRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface NativeRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface VideoSurfaceSnapshot {
+  frontWid: number | null;
+  rearWid: number | null;
+  parentHwndRaw: number | null;
+  frontHwndRaw: number | null;
+  rearHwndRaw: number | null;
+  frontVisible: boolean;
+  rearVisible: boolean;
+  frontWindowRect: NativeRect | null;
+  rearWindowRect: NativeRect | null;
+  frontClientRect: NativeRect | null;
+  rearClientRect: NativeRect | null;
+  lastFrontLayout: VideoRect | null;
+  lastRearLayout: VideoRect | null;
+  debugVisualHosts: boolean;
+}

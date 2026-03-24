@@ -6,10 +6,11 @@ import {
   playbackSetPlaying,
   playbackStop,
   playbackTogglePlayPause,
-  scanFolder
+  scanFolder,
+  updateVideoLayout
 } from "./lib/api";
 import { fmtDuration } from "./lib/format";
-import type { PlaybackSnapshot, ScanResult } from "./types";
+import type { PlaybackSnapshot, ScanResult, VideoRect, VideoSurfaceSnapshot } from "./types";
 import { RecordingList } from "./components/RecordingList";
 import { PairDetails } from "./components/PairDetails";
 import { useKeyboardPairNav } from "./hooks/useKeyboardPairNav";
@@ -27,9 +28,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [playback, setPlayback] = useState<PlaybackSnapshot | null>(null);
+  const [surface, setSurface] = useState<VideoSurfaceSnapshot | null>(null);
   const [sliderPlayheadSec, setSliderPlayheadSec] = useState(0);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
   const seekDebounceRef = useRef<number | null>(null);
+  const layoutDebounceRef = useRef<number | null>(null);
 
   const assetsById = useMemo(() => {
     const map = new Map<string, ScanResult["assets"][number]>();
@@ -156,6 +159,9 @@ export default function App() {
       if (seekDebounceRef.current !== null) {
         window.clearTimeout(seekDebounceRef.current);
       }
+      if (layoutDebounceRef.current !== null) {
+        window.clearTimeout(layoutDebounceRef.current);
+      }
     };
   }, []);
 
@@ -215,6 +221,34 @@ export default function App() {
     } catch (playErr) {
       setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
     }
+  }
+
+  function handleVideoLayoutChange(front: VideoRect, rear: VideoRect) {
+    const dpr = window.devicePixelRatio || 1;
+    const nativeFront: VideoRect = {
+      x: Math.round(front.x * dpr),
+      y: Math.round(front.y * dpr),
+      width: Math.round(front.width * dpr),
+      height: Math.round(front.height * dpr)
+    };
+    const nativeRear: VideoRect = {
+      x: Math.round(rear.x * dpr),
+      y: Math.round(rear.y * dpr),
+      width: Math.round(rear.width * dpr),
+      height: Math.round(rear.height * dpr)
+    };
+    if (layoutDebounceRef.current !== null) {
+      window.clearTimeout(layoutDebounceRef.current);
+    }
+    layoutDebounceRef.current = window.setTimeout(() => {
+      void updateVideoLayout(nativeFront, nativeRear)
+        .then((snapshot) => {
+          setSurface(snapshot);
+        })
+        .catch((layoutErr) => {
+          setPlaybackError(layoutErr instanceof Error ? layoutErr.message : String(layoutErr));
+        });
+    }, 30);
   }
 
   return (
@@ -306,9 +340,26 @@ export default function App() {
         </div>
       </div>
 
+      <div className="panel transport-panel">
+        <div className="panel-title">Embedded Surface Debug</div>
+        <div className="status-row diagnostics-row">
+          <span>Embedded: {surface?.frontWid || surface?.rearWid ? "yes" : "no"}</span>
+          <span>Front wid: {surface?.frontWid ?? "n/a"}</span>
+          <span>Rear wid: {surface?.rearWid ?? "n/a"}</span>
+          <span>Front visible: {surface?.frontVisible ? "yes" : "no"}</span>
+          <span>Rear visible: {surface?.rearVisible ? "yes" : "no"}</span>
+          <span>Debug host visuals: {surface?.debugVisualHosts ? "on" : "off"}</span>
+        </div>
+      </div>
+
       <main className="main-layout">
         <RecordingList pairs={pairs} selectedPairId={selectedPairId} onSelectPair={setSelectedPairId} />
-        <PairDetails pair={selectedPair} assetsById={assetsById} playback={playback} />
+        <PairDetails
+          pair={selectedPair}
+          assetsById={assetsById}
+          playback={playback}
+          onVideoLayoutChange={handleVideoLayoutChange}
+        />
       </main>
     </div>
   );
