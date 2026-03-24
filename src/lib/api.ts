@@ -37,6 +37,10 @@ export async function playbackStop(): Promise<PlaybackSnapshot> {
   return invoke<PlaybackSnapshot>("playback_stop");
 }
 
+export async function playbackGetState(): Promise<PlaybackSnapshot> {
+  return invoke<PlaybackSnapshot>("playback_get_state");
+}
+
 export async function updateVideoLayout(front: VideoRect, rear: VideoRect): Promise<VideoSurfaceSnapshot> {
   return invoke<VideoSurfaceSnapshot>("update_video_layout", { front, rear });
 }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Mutex;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoRect {
     pub x: i32,
@@ -77,6 +77,8 @@ struct VideoSurfaceManager {
     rear_hwnd_raw: Option<isize>,
     last_front_layout: Option<VideoRect>,
     last_rear_layout: Option<VideoRect>,
+    has_promoted_front: bool,
+    has_promoted_rear: bool,
     debug_visual_hosts: bool,
 }
 
@@ -96,6 +98,8 @@ impl VideoSurfaceManager {
             rear_hwnd_raw: None,
             last_front_layout: None,
             last_rear_layout: None,
+            has_promoted_front: false,
+            has_promoted_rear: false,
             debug_visual_hosts,
         }
     }
@@ -134,8 +138,16 @@ impl VideoSurfaceManager {
             .rear_hwnd_raw
             .ok_or_else(|| "Rear video surface not initialized".to_string())?;
 
-        self.last_front_layout = Some(front.clone());
-        self.last_rear_layout = Some(rear.clone());
+        let front_changed = self.last_front_layout.as_ref() != Some(&front);
+        let rear_changed = self.last_rear_layout.as_ref() != Some(&rear);
+
+        if !front_changed && !rear_changed {
+            println!(
+                "video_surface.layout unchanged front_raw={} rear_raw={}",
+                front_raw, rear_raw
+            );
+            return Ok(());
+        }
 
         println!(
             "video_surface.layout front_raw={} rear_raw={} front=({}, {}, {}, {}) rear=({}, {}, {}, {}) debug_visual_hosts={}",
@@ -151,8 +163,16 @@ impl VideoSurfaceManager {
             rear.height,
             self.debug_visual_hosts
         );
-        move_surface(front_raw, &front)?;
-        move_surface(rear_raw, &rear)?;
+        if front_changed {
+            move_surface(front_raw, &front, !self.has_promoted_front)?;
+            self.last_front_layout = Some(front);
+            self.has_promoted_front = true;
+        }
+        if rear_changed {
+            move_surface(rear_raw, &rear, !self.has_promoted_rear)?;
+            self.last_rear_layout = Some(rear);
+            self.has_promoted_rear = true;
+        }
         Ok(())
     }
 
@@ -186,6 +206,8 @@ impl VideoSurfaceManager {
         self.parent_hwnd_raw = None;
         self.last_front_layout = None;
         self.last_rear_layout = None;
+        self.has_promoted_front = false;
+        self.has_promoted_rear = false;
     }
 }
 
@@ -269,9 +291,9 @@ fn create_child_surface(parent_raw: isize, debug_visual_hosts: bool) -> Result<i
 }
 
 #[cfg(target_os = "windows")]
-fn move_surface(hwnd_raw: isize, rect: &VideoRect) -> Result<(), String> {
+fn move_surface(hwnd_raw: isize, rect: &VideoRect, promote_on_first_layout: bool) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        MoveWindow, ShowWindow, SetWindowPos, SW_SHOW, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        MoveWindow, ShowWindow, SetWindowPos, SW_SHOW, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
     };
 
     let width = rect.width.max(1);
@@ -284,19 +306,16 @@ fn move_surface(hwnd_raw: isize, rect: &VideoRect) -> Result<(), String> {
             hwnd_raw, rect.x, rect.y, width, height
         ));
     }
-    // hWndInsertAfter is pointer-shaped in windows-sys; null means keep default stack order with flags.
-    let resized = unsafe {
-        SetWindowPos(
-            hwnd,
-            // Keep surface on top among siblings so it is not hidden under WebView child window.
+    // Avoid z-order thrashing: promote once, then keep stable with NOZORDER updates.
+    let (insert_after, flags) = if promote_on_first_layout {
+        (
             windows_sys::Win32::UI::WindowsAndMessaging::HWND_TOP,
-            rect.x,
-            rect.y,
-            width,
-            height,
             SWP_SHOWWINDOW | SWP_NOACTIVATE,
         )
+    } else {
+        (raw_to_hwnd(0), SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOZORDER)
     };
+    let resized = unsafe { SetWindowPos(hwnd, insert_after, rect.x, rect.y, width, height, flags) };
     if resized == 0 {
         return Err(format!(
             "Failed to resize embedded surface hwnd_raw={} x={} y={} w={} h={}",
@@ -305,11 +324,12 @@ fn move_surface(hwnd_raw: isize, rect: &VideoRect) -> Result<(), String> {
     }
     let show_result = unsafe { ShowWindow(hwnd, SW_SHOW) };
     println!(
-        "video_surface.move hwnd_raw={} moved={} resized={} show_result={} final_window_rect={:?} final_client_rect={:?}",
+        "video_surface.move hwnd_raw={} moved={} resized={} show_result={} promote={} final_window_rect={:?} final_client_rect={:?}",
         hwnd_raw,
         moved,
         resized,
         show_result,
+        promote_on_first_layout,
         window_rect(hwnd_raw),
         client_rect(hwnd_raw)
     );

@@ -33,6 +33,8 @@ function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }
 export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }: PairDetailsProps) {
   const frontSurfaceRef = useRef<HTMLDivElement | null>(null);
   const rearSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const lastSentFrontRef = useRef<VideoRect | null>(null);
+  const lastSentRearRef = useRef<VideoRect | null>(null);
 
   useEffect(() => {
     if (!onVideoLayoutChange) return;
@@ -43,20 +45,35 @@ export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }:
     const emitLayout = () => {
       const frontRect = frontElement.getBoundingClientRect();
       const rearRect = rearElement.getBoundingClientRect();
-      onVideoLayoutChange(
-        {
-          x: Math.round(frontRect.x),
-          y: Math.round(frontRect.y),
-          width: Math.round(frontRect.width),
-          height: Math.round(frontRect.height)
-        },
-        {
-          x: Math.round(rearRect.x),
-          y: Math.round(rearRect.y),
-          width: Math.round(rearRect.width),
-          height: Math.round(rearRect.height)
-        }
-      );
+      const nextFront = {
+        x: Math.round(frontRect.x),
+        y: Math.round(frontRect.y),
+        width: Math.round(frontRect.width),
+        height: Math.round(frontRect.height)
+      };
+      const nextRear = {
+        x: Math.round(rearRect.x),
+        y: Math.round(rearRect.y),
+        width: Math.round(rearRect.width),
+        height: Math.round(rearRect.height)
+      };
+
+      const unchanged =
+        lastSentFrontRef.current &&
+        lastSentRearRef.current &&
+        lastSentFrontRef.current.x === nextFront.x &&
+        lastSentFrontRef.current.y === nextFront.y &&
+        lastSentFrontRef.current.width === nextFront.width &&
+        lastSentFrontRef.current.height === nextFront.height &&
+        lastSentRearRef.current.x === nextRear.x &&
+        lastSentRearRef.current.y === nextRear.y &&
+        lastSentRearRef.current.width === nextRear.width &&
+        lastSentRearRef.current.height === nextRear.height;
+      if (unchanged) return;
+
+      lastSentFrontRef.current = nextFront;
+      lastSentRearRef.current = nextRear;
+      onVideoLayoutChange(nextFront, nextRear);
     };
 
     emitLayout();
