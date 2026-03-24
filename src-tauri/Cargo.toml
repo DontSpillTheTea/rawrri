@@ -1,12 +1,12 @@
 [package]
-name = "k6player"
+name = "rawrii"
 version = "0.1.0"
-description = "Fast desktop viewer for INNOVV K6 front/rear dashcam footage, with paired playback and basic clip export."
+description = "Fast desktop viewer for paired front/rear dashcam footage, with basic clip export."
 authors = ["Anthony Ma"]
 edition = "2021"
 
 [lib]
-name = "k6player_lib"
+name = "rawrii_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

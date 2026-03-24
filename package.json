@@ -1,9 +1,9 @@
 {
-  "name": "k6player",
+  "name": "rawrii",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Fast desktop viewer for INNOVV K6 front/rear dashcam footage, with paired playback and basic clip export.",
+  "description": "Fast desktop viewer for paired front/rear dashcam footage, with basic clip export.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

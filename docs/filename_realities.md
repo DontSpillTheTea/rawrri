@@ -1,4 +1,4 @@
-# K6 Filename Reality Notes (`.test_examples`)
+# K6-Compatible Filename Notes (`.test_examples`)
 
 Observed from local copied sample set:
 

@@ -17,7 +17,7 @@ pub struct CachedFolderScan {
 
 fn cache_file_path() -> Option<PathBuf> {
     let base = dirs::data_local_dir()?;
-    Some(base.join("k6player").join("cache.json"))
+    Some(base.join("rawrii").join("cache.json"))
 }
 
 pub fn load_cached_scan(folder: &str, recursive: bool, pairing_threshold_ms: i64) -> Option<ScanResult> {

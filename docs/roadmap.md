@@ -10,7 +10,7 @@
 ## Milestone 1: scan + pair + browse
 
 - [x] Folder scan command
-- [x] K6 filename parser
+- [x] K6-compatible filename profile parser
 - [x] Deterministic pairing heuristic with threshold
 - [x] Logical pair list UI
 - [x] Missing-side warnings

@@ -1,13 +1,13 @@
 # Local Fixture Data
 
-This folder is used for local validation of scanner/parser/pairing behavior with real INNOVV K6 copied media.
+This folder is used for local validation of scanner/parser/pairing behavior with copied dashcam media samples.
 
 Expected structure example:
 
 - `.test_examples/INNOVVK6/VIDEO/*.MP4`
 - `.test_examples/INNOVVK6/Photo/*.JPG`
 
-Expected K6 video name shape:
+Current built-in parser profile (K6-compatible) video name shape:
 
 - `YYYYMMDD_HHMMSS_<sequence>_F.MP4`
 - `YYYYMMDD_HHMMSS_<sequence>_R.MP4`
