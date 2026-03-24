@@ -63,6 +63,8 @@ export interface PlaybackSnapshot {
   syncDeltaSec: number | null;
   frontLoaded: boolean;
   rearLoaded: boolean;
+  frontMuted: boolean;
+  rearMuted: boolean;
   lastError: string | null;
 }
 
