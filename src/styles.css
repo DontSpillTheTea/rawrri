@@ -85,6 +85,21 @@ button:disabled {
   gap: 10px;
 }
 
+.transport-panel {
+  gap: 10px;
+}
+
+.transport-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scrub-slider {
+  width: 100%;
+}
+
 .panel {
   border: 1px solid #2f3947;
   border-radius: 10px;
