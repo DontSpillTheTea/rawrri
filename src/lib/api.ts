@@ -33,6 +33,10 @@ export async function playbackSeek(playheadSec: number): Promise<PlaybackSnapsho
   return invoke<PlaybackSnapshot>("playback_seek", { playheadSec });
 }
 
+export async function playbackSetMute(side: "front" | "rear", muted: boolean): Promise<PlaybackSnapshot> {
+  return invoke<PlaybackSnapshot>("playback_set_mute", { side, muted });
+}
+
 export async function playbackStop(): Promise<PlaybackSnapshot> {
   return invoke<PlaybackSnapshot>("playback_stop");
 }

@@ -27,6 +27,8 @@ pub struct PlaybackSnapshot {
     pub sync_delta_sec: Option<f64>,
     pub front_loaded: bool,
     pub rear_loaded: bool,
+    pub front_muted: bool,
+    pub rear_muted: bool,
     pub last_error: Option<String>,
 }
 
@@ -41,6 +43,8 @@ pub struct PlaybackState {
     pub front_duration_sec: Option<f64>,
     pub rear_duration_sec: Option<f64>,
     pub sync_delta_sec: Option<f64>,
+    pub front_muted: bool,
+    pub rear_muted: bool,
     pub last_error: Option<String>,
     pub play_started_at: Option<Instant>,
     pub playhead_started_sec: f64,
@@ -86,6 +90,8 @@ impl PlaybackManager {
         self.state.rear_duration_sec = None;
         self.state.pair_duration_sec = None;
         self.state.sync_delta_sec = None;
+        self.state.front_muted = false;
+        self.state.rear_muted = true;
         self.state.last_error = None;
         println!(
             "playback.load_pair pair_id={} front_present={} rear_present={} front_wid={:?} rear_wid={:?}",
@@ -99,6 +105,7 @@ impl PlaybackManager {
         if let Some(path) = front_path {
             let mut player = PlayerInstance::spawn("front", front_wid)?;
             player.load_file(&path)?;
+            player.set_mute(false)?;
             player.set_paused(true)?;
             player.seek(0.0)?;
             self.front = Some(player);
@@ -107,6 +114,7 @@ impl PlaybackManager {
         if let Some(path) = rear_path {
             let mut player = PlayerInstance::spawn("rear", rear_wid)?;
             player.load_file(&path)?;
+            player.set_mute(true)?;
             player.set_paused(true)?;
             player.seek(0.0)?;
             self.rear = Some(player);
@@ -172,6 +180,25 @@ impl PlaybackManager {
         self.snapshot()
     }
 
+    pub fn set_side_muted(&mut self, side: &str, muted: bool) -> Result<PlaybackSnapshot, String> {
+        match side {
+            "front" => {
+                self.state.front_muted = muted;
+                if let Some(front) = self.front.as_mut() {
+                    front.set_mute(muted)?;
+                }
+            }
+            "rear" => {
+                self.state.rear_muted = muted;
+                if let Some(rear) = self.rear.as_mut() {
+                    rear.set_mute(muted)?;
+                }
+            }
+            _ => return Err(format!("Unknown side '{}'. Expected 'front' or 'rear'.", side)),
+        }
+        Ok(self.snapshot())
+    }
+
     pub fn snapshot(&self) -> PlaybackSnapshot {
         PlaybackSnapshot {
             active_pair_id: self.state.active_pair_id.clone(),
@@ -185,6 +212,8 @@ impl PlaybackManager {
             sync_delta_sec: self.state.sync_delta_sec,
             front_loaded: self.front.is_some(),
             rear_loaded: self.rear.is_some(),
+            front_muted: self.state.front_muted,
+            rear_muted: self.state.rear_muted,
             last_error: self.state.last_error.clone(),
         }
     }
@@ -257,6 +286,20 @@ impl PlaybackManager {
         self.state.sync_delta_sec = match (self.state.front_time_sec, self.state.rear_time_sec) {
             (Some(front), Some(rear)) => Some(rear - front),
             _ => None,
+        };
+        self.state.front_muted = match self.front.as_mut() {
+            Some(front) => match front.get_property_bool("mute") {
+                Ok(Some(value)) => value,
+                _ => self.state.front_muted,
+            },
+            None => self.state.front_muted,
+        };
+        self.state.rear_muted = match self.rear.as_mut() {
+            Some(rear) => match rear.get_property_bool("mute") {
+                Ok(Some(value)) => value,
+                _ => self.state.rear_muted,
+            },
+            None => self.state.rear_muted,
         };
 
         self.state.playhead_sec = match (self.state.front_time_sec, self.state.rear_time_sec) {
@@ -374,6 +417,12 @@ impl PlayerInstance {
         }))
     }
 
+    fn set_mute(&mut self, muted: bool) -> Result<(), String> {
+        self.send_command(json!({
+            "command": ["set_property", "mute", muted]
+        }))
+    }
+
     fn send_command(&mut self, command: serde_json::Value) -> Result<(), String> {
         let serialized = serde_json::to_string(&command)
             .map_err(|err| format!("Failed to serialize mpv command: {}", err))?;
@@ -416,6 +465,21 @@ impl PlayerInstance {
             return Ok(None);
         }
         Ok(response.get("data").and_then(|value| value.as_f64()))
+    }
+
+    fn get_property_bool(&mut self, property: &str) -> Result<Option<bool>, String> {
+        let request_id = self.next_request_id;
+        self.next_request_id = self.next_request_id.saturating_add(1);
+        let command = json!({
+            "command": ["get_property", property],
+            "request_id": request_id
+        });
+        let response = self.send_command_and_wait(command, request_id)?;
+        let error = response.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+        if error != "success" {
+            return Ok(None);
+        }
+        Ok(response.get("data").and_then(|value| value.as_bool()))
     }
 
     fn send_command_and_wait(

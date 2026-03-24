@@ -86,6 +86,19 @@ fn playback_seek(playback: State<'_, PlaybackController>, playhead_sec: f64) -> 
 }
 
 #[tauri::command]
+fn playback_set_mute(
+    playback: State<'_, PlaybackController>,
+    side: String,
+    muted: bool,
+) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    manager.set_side_muted(&side, muted)
+}
+
+#[tauri::command]
 fn playback_stop(playback: State<'_, PlaybackController>) -> Result<PlaybackSnapshot, String> {
     let mut manager = playback
         .manager
@@ -127,6 +140,7 @@ pub fn run() {
             playback_toggle_play_pause,
             playback_set_playing,
             playback_seek,
+            playback_set_mute,
             playback_stop,
             playback_get_state,
             update_video_layout
