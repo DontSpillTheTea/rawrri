@@ -33,11 +33,7 @@ export function RecordingList({ pairs, selectedPairId, onSelectPair }: Recording
               <div className="list-row-sub">
                 <span className={`badge ${hasFront ? "ok" : "warn"}`}>F {hasFront ? "yes" : "missing"}</span>
                 <span className={`badge ${hasRear ? "ok" : "warn"}`}>R {hasRear ? "yes" : "missing"}</span>
-                <span>Confidence {Math.round(pair.pairingConfidence * 100)}%</span>
-              </div>
-              <div className="list-row-sub">
-                <span>Reason: {pair.pairingReason}</span>
-                <span>Warnings: {pair.warnings.length}</span>
+                <span>{pair.warnings.length > 0 ? `${pair.warnings.length} warning(s)` : "Healthy"}</span>
               </div>
               {pair.warnings.length > 0 ? <div className="pair-warning">{pair.warnings.join(", ")}</div> : null}
             </button>

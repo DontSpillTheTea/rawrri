@@ -1,15 +1,27 @@
 import { useEffect, useRef } from "react";
 import type { PlaybackSnapshot, RecordingPair, VideoAsset, VideoRect } from "../types";
-import { fmtBytes, fmtDate } from "../lib/format";
+import { fmtDate, fmtDuration } from "../lib/format";
 
 interface PairDetailsProps {
   pair: RecordingPair | null;
   assetsById: Map<string, VideoAsset>;
   playback: PlaybackSnapshot | null;
   onVideoLayoutChange?: (front: VideoRect, rear: VideoRect) => void;
+  pairStartLabel?: string;
+  pairEndLabel?: string;
+  prevGapLabel?: string;
+  nextGapLabel?: string;
 }
 
-function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }) {
+function AssetCard({
+  label,
+  asset,
+  runtimeDurationSec
+}: {
+  label: string;
+  asset: VideoAsset | null;
+  runtimeDurationSec: number | null;
+}) {
   return (
     <div className="asset-card">
       <h4>{label}</h4>
@@ -18,29 +30,37 @@ function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }
       ) : (
         <div className="asset-details">
           <div>{asset.filename}</div>
-          <div>{fmtDate(asset.parsedTimestamp)}</div>
-          <div>Parse status: {asset.parseStatus}</div>
-          <div>Sequence: {asset.parsedSequence ?? "unknown"}</div>
-          <div>Raw ts: {asset.rawTimestampString ?? "unknown"}</div>
-          <div>{fmtBytes(asset.sizeBytes)}</div>
-          <div>{asset.path}</div>
+          <div>Start: {fmtDate(asset.parsedTimestamp)}</div>
+          <div>Duration: {fmtDuration(runtimeDurationSec ?? asset.durationSec)}</div>
         </div>
       )}
     </div>
   );
 }
 
-export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }: PairDetailsProps) {
+export function PairDetails({
+  pair,
+  assetsById,
+  playback,
+  onVideoLayoutChange,
+  pairStartLabel,
+  pairEndLabel,
+  prevGapLabel,
+  nextGapLabel
+}: PairDetailsProps) {
   const frontSurfaceRef = useRef<HTMLDivElement | null>(null);
   const rearSurfaceRef = useRef<HTMLDivElement | null>(null);
   const lastSentFrontRef = useRef<VideoRect | null>(null);
   const lastSentRearRef = useRef<VideoRect | null>(null);
 
   useEffect(() => {
+    if (!pair) return;
     if (!onVideoLayoutChange) return;
     const frontElement = frontSurfaceRef.current;
     const rearElement = rearSurfaceRef.current;
     if (!frontElement || !rearElement) return;
+    lastSentFrontRef.current = null;
+    lastSentRearRef.current = null;
 
     const emitLayout = () => {
       const frontRect = frontElement.getBoundingClientRect();
@@ -85,12 +105,12 @@ export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }:
       observer.disconnect();
       window.removeEventListener("resize", emitLayout);
     };
-  }, [onVideoLayoutChange, pair?.id]);
+  }, [onVideoLayoutChange, pair, pair?.id]);
 
   if (!pair) {
     return (
-      <div className="panel detail-panel">
-        <div className="panel-title">Current Pair</div>
+      <div className="panel details-panel">
+        <div className="panel-title">Playback Workspace</div>
         <div className="empty-state">Select a recording pair from the list.</div>
       </div>
     );
@@ -100,27 +120,42 @@ export function PairDetails({ pair, assetsById, playback, onVideoLayoutChange }:
   const rear = pair.rearAssetId ? assetsById.get(pair.rearAssetId) ?? null : null;
 
   return (
-    <div className="panel detail-panel">
-      <div className="panel-title">Current Pair</div>
-      <div className="pair-meta">
-        <div>ID: {pair.id}</div>
-        <div>Time: {fmtDate(pair.canonicalStartTime)}</div>
-        <div>Reason: {pair.pairingReason}</div>
-        <div>Source: {pair.sourceFolder}</div>
-      </div>
-      <div className="preview-grid">
-        <div ref={frontSurfaceRef} className="video-placeholder">
-          {playback?.frontLoaded ? "Front embedded mpv surface" : "Front side unavailable"}
-        </div>
-        <div ref={rearSurfaceRef} className="video-placeholder">
-          {playback?.rearLoaded ? "Rear embedded mpv surface" : "Rear side unavailable"}
+    <div className="detail-stack">
+      <div className="panel playback-panel">
+        <div className="panel-title">Playback Workspace</div>
+        <div className="preview-grid">
+          <div ref={frontSurfaceRef} className="video-placeholder">
+            {playback?.frontLoaded ? "Front" : "Front unavailable"}
+          </div>
+          <div ref={rearSurfaceRef} className="video-placeholder">
+            {playback?.rearLoaded ? "Rear" : "Rear unavailable"}
+          </div>
         </div>
       </div>
-      <div className="asset-grid">
-        <AssetCard label="Front" asset={front} />
-        <AssetCard label="Rear" asset={rear} />
+
+      <div className="panel details-panel">
+        <div className="panel-title">Current Pair Summary</div>
+        <div className="pair-summary-grid">
+          <div>Start: {pairStartLabel ?? fmtDate(pair.canonicalStartTime)}</div>
+          <div>End: {pairEndLabel ?? "Unknown"}</div>
+          <div>Front duration: {fmtDuration(playback?.frontDurationSec)}</div>
+          <div>Rear duration: {fmtDuration(playback?.rearDurationSec)}</div>
+          <div>Sync delta: {playback?.syncDeltaSec !== null ? `${playback?.syncDeltaSec.toFixed(2)}s` : "Unknown"}</div>
+          <div>Previous: {prevGapLabel ?? "Unknown"}</div>
+          <div>Next: {nextGapLabel ?? "Unknown"}</div>
+        </div>
+        <div className="pair-details-scroll">
+          <div className="asset-grid">
+            <AssetCard label="Front" asset={front} runtimeDurationSec={playback?.frontDurationSec ?? null} />
+            <AssetCard label="Rear" asset={rear} runtimeDurationSec={playback?.rearDurationSec ?? null} />
+          </div>
+          <div className="pair-meta">
+            <div>Pair reason: {pair.pairingReason}</div>
+            <div>Source folder: {pair.sourceFolder}</div>
+          </div>
+          {pair.warnings.length > 0 ? <div className="pair-warning">{pair.warnings.join(", ")}</div> : null}
+        </div>
       </div>
-      {pair.warnings.length > 0 ? <div className="pair-warning">{pair.warnings.join(", ")}</div> : null}
     </div>
   );
 }
