@@ -1,12 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { scanFolder } from "./lib/api";
-import type { ScanResult } from "./types";
+import {
+  playbackLoadPair,
+  playbackSeek,
+  playbackSetPlaying,
+  playbackStop,
+  playbackTogglePlayPause,
+  scanFolder
+} from "./lib/api";
+import { fmtDuration } from "./lib/format";
+import type { PlaybackSnapshot, ScanResult } from "./types";
 import { RecordingList } from "./components/RecordingList";
 import { PairDetails } from "./components/PairDetails";
 import { useKeyboardPairNav } from "./hooks/useKeyboardPairNav";
 
 const DEFAULT_THRESHOLD_MS = 3000;
+const SMALL_SEEK_SECONDS = 2;
+const LARGE_SEEK_SECONDS = 10;
+const SLIDER_DEBOUNCE_MS = 50;
 
 export default function App() {
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -14,6 +25,11 @@ export default function App() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playback, setPlayback] = useState<PlaybackSnapshot | null>(null);
+  const [sliderPlayheadSec, setSliderPlayheadSec] = useState(0);
+  const [isSliderDragging, setIsSliderDragging] = useState(false);
+  const seekDebounceRef = useRef<number | null>(null);
 
   const assetsById = useMemo(() => {
     const map = new Map<string, ScanResult["assets"][number]>();
@@ -32,6 +48,41 @@ export default function App() {
       : scanResult
         ? "loaded"
         : "idle";
+
+  useEffect(() => {
+    if (!isSliderDragging) {
+      setSliderPlayheadSec(playback?.playheadSec ?? 0);
+    }
+  }, [playback?.playheadSec, isSliderDragging]);
+
+  useEffect(() => {
+    if (!selectedPair) {
+      void playbackStop()
+        .then((snapshot) => {
+          setPlayback(snapshot);
+        })
+        .catch((playErr) => {
+          setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+        });
+      return;
+    }
+
+    const frontPath = selectedPair.frontAssetId ? (assetsById.get(selectedPair.frontAssetId)?.path ?? null) : null;
+    const rearPath = selectedPair.rearAssetId ? (assetsById.get(selectedPair.rearAssetId)?.path ?? null) : null;
+
+    setPlaybackError(null);
+    void playbackLoadPair({
+      pairId: selectedPair.id,
+      frontPath,
+      rearPath
+    })
+      .then((snapshot) => {
+        setPlayback(snapshot);
+      })
+      .catch((playErr) => {
+        setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+      });
+  }, [selectedPair, assetsById]);
 
   async function pickFolderAndScan() {
     setError(null);
@@ -69,11 +120,102 @@ export default function App() {
     setSelectedPairId(pairs[nextIndex].id);
   }
 
+  async function togglePlayPause() {
+    setPlaybackError(null);
+    try {
+      const snapshot = await playbackTogglePlayPause();
+      setPlayback(snapshot);
+    } catch (playErr) {
+      setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+    }
+  }
+
+  async function seekTo(playheadSec: number) {
+    setPlaybackError(null);
+    try {
+      const snapshot = await playbackSeek(Math.max(0, playheadSec));
+      setPlayback(snapshot);
+    } catch (playErr) {
+      setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+    }
+  }
+
+  async function seekRelative(offsetSec: number) {
+    const base = playback?.playheadSec ?? 0;
+    await seekTo(base + offsetSec);
+  }
+
   useKeyboardPairNav({
     canNavigate: pairs.length > 0,
     onNext: () => selectRelative(1),
     onPrev: () => selectRelative(-1)
   });
+
+  useEffect(() => {
+    return () => {
+      if (seekDebounceRef.current !== null) {
+        window.clearTimeout(seekDebounceRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+      if (isInput) return;
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        void togglePlayPause();
+        return;
+      }
+
+      if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        void seekRelative(event.shiftKey ? -LARGE_SEEK_SECONDS : -SMALL_SEEK_SECONDS);
+        return;
+      }
+
+      if (event.code === "ArrowRight") {
+        event.preventDefault();
+        void seekRelative(event.shiftKey ? LARGE_SEEK_SECONDS : SMALL_SEEK_SECONDS);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [playback]);
+
+  function onSliderInput(nextValue: number) {
+    setIsSliderDragging(true);
+    setSliderPlayheadSec(nextValue);
+    if (seekDebounceRef.current !== null) {
+      window.clearTimeout(seekDebounceRef.current);
+    }
+    seekDebounceRef.current = window.setTimeout(() => {
+      void seekTo(nextValue);
+    }, SLIDER_DEBOUNCE_MS);
+  }
+
+  function onSliderCommit() {
+    setIsSliderDragging(false);
+    if (seekDebounceRef.current !== null) {
+      window.clearTimeout(seekDebounceRef.current);
+      seekDebounceRef.current = null;
+    }
+    void seekTo(sliderPlayheadSec);
+  }
+
+  async function setPlaying(isPlaying: boolean) {
+    setPlaybackError(null);
+    try {
+      const snapshot = await playbackSetPlaying(isPlaying);
+      setPlayback(snapshot);
+    } catch (playErr) {
+      setPlaybackError(playErr instanceof Error ? playErr.message : String(playErr));
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -117,10 +259,56 @@ export default function App() {
       {!error && (scanResult?.errors.length ?? 0) > 0 ? (
         <div className="error-banner">Scan diagnostics: {scanResult?.errors.join(" | ")}</div>
       ) : null}
+      {playbackError ? <div className="error-banner">Playback: {playbackError}</div> : null}
+
+      <div className="panel transport-panel">
+        <div className="panel-title">Playback Transport</div>
+        <div className="transport-row">
+          <button type="button" onClick={() => void setPlaying(true)} disabled={!selectedPair}>
+            Play
+          </button>
+          <button type="button" onClick={() => void setPlaying(false)} disabled={!selectedPair}>
+            Pause
+          </button>
+          <button type="button" onClick={() => void seekRelative(-SMALL_SEEK_SECONDS)} disabled={!selectedPair}>
+            -2s
+          </button>
+          <button type="button" onClick={() => void seekRelative(SMALL_SEEK_SECONDS)} disabled={!selectedPair}>
+            +2s
+          </button>
+          <button type="button" onClick={() => void seekRelative(-LARGE_SEEK_SECONDS)} disabled={!selectedPair}>
+            -10s
+          </button>
+          <button type="button" onClick={() => void seekRelative(LARGE_SEEK_SECONDS)} disabled={!selectedPair}>
+            +10s
+          </button>
+          <span>
+            Status: {playback?.isPlaying ? "playing" : "paused"} | Playhead:{" "}
+            {fmtDuration(playback?.playheadSec ?? 0)}
+          </span>
+        </div>
+        <input
+          className="scrub-slider"
+          type="range"
+          min={0}
+          max={3600}
+          step={0.1}
+          value={sliderPlayheadSec}
+          onChange={(event) => onSliderInput(Number(event.target.value))}
+          onMouseUp={onSliderCommit}
+          onTouchEnd={onSliderCommit}
+          disabled={!selectedPair}
+        />
+        <div className="status-row">
+          <span>Space: play/pause</span>
+          <span>Left/Right: +/-2s</span>
+          <span>Shift+Left/Right: +/-10s</span>
+        </div>
+      </div>
 
       <main className="main-layout">
         <RecordingList pairs={pairs} selectedPairId={selectedPairId} onSelectPair={setSelectedPairId} />
-        <PairDetails pair={selectedPair} assetsById={assetsById} />
+        <PairDetails pair={selectedPair} assetsById={assetsById} playback={playback} />
       </main>
     </div>
   );

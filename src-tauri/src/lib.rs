@@ -10,7 +10,9 @@ mod scanner;
 mod settings;
 mod state;
 
+use playback::{PlaybackController, PlaybackSnapshot};
 use scanner::scan_folder as scan_folder_impl;
+use tauri::State;
 
 #[tauri::command]
 fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms: Option<i64>) -> Result<models::ScanResult, String> {
@@ -28,13 +30,84 @@ fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms:
     Ok(result)
 }
 
+#[tauri::command]
+fn playback_load_pair(
+    playback: State<'_, PlaybackController>,
+    pair_id: String,
+    front_path: Option<String>,
+    rear_path: Option<String>,
+) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    manager.load_pair(pair_id, front_path, rear_path)
+}
+
+#[tauri::command]
+fn playback_toggle_play_pause(playback: State<'_, PlaybackController>) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    manager.toggle_playing()
+}
+
+#[tauri::command]
+fn playback_set_playing(
+    playback: State<'_, PlaybackController>,
+    is_playing: bool,
+) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    manager.set_playing(is_playing)
+}
+
+#[tauri::command]
+fn playback_seek(playback: State<'_, PlaybackController>, playhead_sec: f64) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    manager.seek_to(playhead_sec)
+}
+
+#[tauri::command]
+fn playback_stop(playback: State<'_, PlaybackController>) -> Result<PlaybackSnapshot, String> {
+    let mut manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    Ok(manager.stop())
+}
+
+#[tauri::command]
+fn playback_get_state(playback: State<'_, PlaybackController>) -> Result<PlaybackSnapshot, String> {
+    let manager = playback
+        .manager
+        .lock()
+        .map_err(|_| "Playback manager lock poisoned".to_string())?;
+    Ok(manager.snapshot())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init_logging();
 
     tauri::Builder::default()
+        .manage(PlaybackController::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![scan_folder])
+        .invoke_handler(tauri::generate_handler![
+            scan_folder,
+            playback_load_pair,
+            playback_toggle_play_pause,
+            playback_set_playing,
+            playback_seek,
+            playback_stop,
+            playback_get_state
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

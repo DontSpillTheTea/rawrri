@@ -15,6 +15,11 @@ Example: `tauri` and `tauri-build` may use different minor version lines while s
 
 ## High-level components
 
+## External runtime dependencies
+
+- `mpv` binary on PATH for dual playback control (current milestone)
+- `ffmpeg` / `ffprobe` planned for export and metadata milestones
+
 ### Frontend (`src/`)
 
 - React UI shell
@@ -35,7 +40,7 @@ Example: `tauri` and `tauri-build` may use different minor version lines while s
 - `pairing`: nearest-neighbor pairing with configurable threshold
 - `metadata`: ffprobe extraction pipeline (planned)
 - `cache`: persistent folder scan cache
-- `playback`: mpv orchestration boundary (planned)
+- `playback`: mpv process orchestration via JSON IPC (v0 external windows)
 - `export`: ffmpeg job queue boundary (planned)
 - `settings`, `state`, `logging`: runtime coordination
 

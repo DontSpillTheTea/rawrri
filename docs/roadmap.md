@@ -29,10 +29,10 @@
 
 ## Milestone 2: dual playback (mpv)
 
-- [ ] Integrate mpv process/libmpv control
-- [ ] Render front/rear panes in app window
-- [ ] Shared logical playhead model
-- [ ] Synchronized play/pause/seek
+- [x] Integrate mpv process control via IPC (two instances)
+- [ ] Render front/rear panes embedded in app window (currently external mpv windows)
+- [x] Shared logical playhead model
+- [x] Synchronized play/pause/seek
 - [ ] Keyboard transport shortcuts
 - [ ] Optional one-click resync
 

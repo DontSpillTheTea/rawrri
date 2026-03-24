@@ -1,9 +1,10 @@
-import type { RecordingPair, VideoAsset } from "../types";
+import type { PlaybackSnapshot, RecordingPair, VideoAsset } from "../types";
 import { fmtBytes, fmtDate } from "../lib/format";
 
 interface PairDetailsProps {
   pair: RecordingPair | null;
   assetsById: Map<string, VideoAsset>;
+  playback: PlaybackSnapshot | null;
 }
 
 function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }) {
@@ -27,7 +28,7 @@ function AssetCard({ label, asset }: { label: string; asset: VideoAsset | null }
   );
 }
 
-export function PairDetails({ pair, assetsById }: PairDetailsProps) {
+export function PairDetails({ pair, assetsById, playback }: PairDetailsProps) {
   if (!pair) {
     return (
       <div className="panel detail-panel">
@@ -50,8 +51,12 @@ export function PairDetails({ pair, assetsById }: PairDetailsProps) {
         <div>Source: {pair.sourceFolder}</div>
       </div>
       <div className="preview-grid">
-        <div className="video-placeholder">Front pane (mpv integration next)</div>
-        <div className="video-placeholder">Rear pane (mpv integration next)</div>
+        <div className="video-placeholder">
+          {playback?.frontLoaded ? "Front playing in external mpv window" : "Front side unavailable"}
+        </div>
+        <div className="video-placeholder">
+          {playback?.rearLoaded ? "Rear playing in external mpv window" : "Rear side unavailable"}
+        </div>
       </div>
       <div className="asset-grid">
         <AssetCard label="Front" asset={front} />

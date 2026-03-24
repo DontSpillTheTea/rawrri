@@ -50,3 +50,11 @@ export interface ScanResult {
   diagnostics: ScanDiagnostics;
   errors: string[];
 }
+
+export interface PlaybackSnapshot {
+  activePairId: string | null;
+  isPlaying: boolean;
+  playheadSec: number;
+  frontLoaded: boolean;
+  rearLoaded: boolean;
+}

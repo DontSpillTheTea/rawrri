@@ -15,7 +15,7 @@ Early prototype (Milestone 0/1 foundation):
 - K6-compatible filename parsing and deterministic front/rear pairing heuristic
 - Pair list UI with selection and missing-side warnings
 - Keyboard navigation (`J/K` or `Up/Down`) for previous/next pair
-- Placeholder dual-pane area for upcoming mpv integration
+- Dual mpv playback control via two IPC-driven player instances (external windows in v0)
 
 ## Naming assumptions (current profile)
 
@@ -52,6 +52,7 @@ Install:
   - MSVC v143 toolset
   - Windows 10/11 SDK
 - Microsoft Edge WebView2 runtime
+- mpv (required for Milestone 2 playback)
 
 Quick verification:
 
@@ -60,6 +61,13 @@ node --version
 npm --version
 cargo --version
 rustup show
+mpv --version
+```
+
+Install mpv on Windows with Scoop:
+
+```bash
+scoop install mpv
 ```
 
 If you see `link.exe not found` during `npm run tauri:dev`, install/repair Visual Studio Build Tools with the C++ workload above and restart the terminal so `link.exe` is on PATH.
@@ -119,7 +127,7 @@ Policy for now: keep `.test_examples` as local developer fixture data unless oth
 
 ## Current limitations
 
-- No embedded mpv playback yet
+- mpv playback currently uses external native windows (embedding in Tauri UI comes later)
 - No ffprobe metadata extraction yet (duration/resolution/codec placeholders)
 - Cache is basic and currently keyed by folder path
 - No export pipeline yet
