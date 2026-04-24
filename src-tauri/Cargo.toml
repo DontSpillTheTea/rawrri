@@ -26,5 +26,6 @@ walkdir = "2.5"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 ort = "2.0.0-rc.9"
 image = "0.25"
+ndarray = "0.15"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 tokio = { version = "1.36", features = ["full"] }

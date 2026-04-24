@@ -38,11 +38,21 @@
 
 ## Milestone 3: speed polish
 
+- [x] SQLite-backed asynchronous job queue foundation
+- [x] Async ffprobe metadata worker
 - [ ] Warm-open cache validation optimization
-- [ ] Async ffprobe metadata worker
 - [ ] Virtualized pair list for large libraries
 - [ ] Adjacent pair preloading
 - [ ] Interaction latency profiling/tuning
+
+## Milestone 3.5: AI Pipeline Core
+
+- [x] Robust frame extraction foundation (ffmpeg PPM stream)
+- [ ] Model downloader (YOLOv8, OCR models)
+- [ ] ONNX Runtime integration (ort)
+- [ ] Real-time inference implementation
+- [ ] Observation debouncing and IoU tracking
+- [ ] Search and filtering UI
 
 ## Milestone 4: kept segments
 

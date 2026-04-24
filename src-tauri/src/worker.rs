@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter};
 use crate::db::DbManager;
 use crate::metadata::extract_metadata;
 use crate::analysis::AnalysisEngine;
+use crate::models_manager::ModelManager;
 
 pub struct JobWorker {
     db: Arc<DbManager>,
@@ -12,11 +13,12 @@ pub struct JobWorker {
 }
 
 impl JobWorker {
-    pub fn new(db: Arc<DbManager>, app_handle: AppHandle) -> Self {
+    pub fn new(db: Arc<DbManager>, app_handle: AppHandle, model_manager: Arc<ModelManager>) -> Self {
+        let yolov8_path = model_manager.get_model_path("yolov8n");
         Self {
             db,
             app_handle,
-            analysis_engine: Arc::new(AnalysisEngine::new()),
+            analysis_engine: Arc::new(AnalysisEngine::new(Some(yolov8_path))),
         }
     }
 
@@ -29,7 +31,6 @@ impl JobWorker {
                     self.process_job(job).await;
                 }
                 Ok(None) => {
-                    // No jobs, sleep for a bit
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 Err(e) => {
@@ -57,8 +58,17 @@ impl JobWorker {
                 }
             }
             "ai_analysis" => {
-                // Phase 2 placeholder
-                let _ = self.db.update_job_status(&job.id, "completed", 1.0, None);
+                // Real analysis call
+                match self.analysis_engine.analyze_asset(&job.asset_id, "unknown_pair", &job.asset_path) {
+                    Ok(observations) => {
+                        // TODO: Save observations to DB
+                        let _ = self.db.update_job_status(&job.id, "completed", 1.0, None);
+                        let _ = self.app_handle.emit("observations_found", observations);
+                    }
+                    Err(e) => {
+                        let _ = self.db.update_job_status(&job.id, "failed", 0.0, Some(&e));
+                    }
+                }
             }
             _ => {
                 let _ = self.db.update_job_status(&job.id, "failed", 0.0, Some("Unknown job type"));

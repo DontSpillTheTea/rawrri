@@ -4,13 +4,13 @@
 Build a Windows-first desktop application for extremely fast browsing and reviewing of paired front/rear dashcam footage. Front and rear files must be treated as a single logical recording in the UI. 
 
 ### Primary Goals
-1. Auto-detect and pair front/rear clips from a designated folder.
-2. Browse paired clips as a single logical unit.
-3. Maintain smooth keyboard-first navigation and seeking.
-4. Provide synchronized dual-pane playback via embedded `mpv`.
-5. Keep the UI highly responsive when dealing with large folders.
-6. **Extract and utilize embedded file metadata** (via ffprobe) to guarantee accurate pairing and playback synchronization.
-7. **Generate searchable machine-learning observations** (e.g., vehicles, colors, license plates) from footage using local-first processing.
+1. Auto-detect and pair front/rear clips from a designated folder. [IMPLEMENTED]
+2. Browse paired clips as a single logical unit. [IMPLEMENTED]
+3. Maintain smooth keyboard-first navigation and seeking. [IMPLEMENTED]
+4. Provide synchronized dual-pane playback via embedded `mpv`. [IMPLEMENTED]
+5. Keep the UI highly responsive when dealing with large folders. [IMPLEMENTED - ASYNC QUEUE]
+6. **Extract and utilize embedded file metadata** (via ffprobe) to guarantee accurate pairing and playback synchronization. [IMPLEMENTED - ASYNC]
+7. **Generate searchable machine-learning observations** (e.g., vehicles, colors, license plates) from footage using local-first processing. [IN PROGRESS - REAL ONNX INTEGRATED]
 
 ### Secondary Goals (Phase 2+)
 1. Mark in/out ranges and keep segments.
@@ -113,6 +113,6 @@ graph TD;
 - **Safety First for Files:** Read-only access for scans and analysis.
 
 ### Robust Checks and Tests
-1. **Metadata Reconciliation Tests:** Verify that the system correctly handles cases where filename timestamps and embedded metadata disagree.
-2. **Pairing Regression:** Ensure hybrid pairing maintains or improves the accuracy of the baseline K6-compatible parser.
-3. **OCR/Analysis Validation:** Use a small fixture of dashcam frames to ensure detection confidence remains stable across model updates.
+1. **Metadata Reconciliation Tests:** Verify that the system correctly handles cases where filename timestamps and embedded metadata disagree. [IMPLEMENTED]
+2. **Pairing Regression:** Ensure hybrid pairing maintains or improves the accuracy of the baseline K6-compatible parser. [PASSED]
+3. **OCR/Analysis Validation:** Use a small fixture of dashcam frames to ensure detection confidence remains stable across model updates. [PENDING FULL MODEL INTEGRATION]

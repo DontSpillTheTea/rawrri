@@ -6,6 +6,7 @@ mod filename_parser;
 mod logging;
 mod metadata;
 mod models;
+mod models_manager;
 mod pairing;
 mod playback;
 mod scanner;
@@ -16,7 +17,9 @@ mod worker;
 
 use std::sync::Arc;
 use db::DbManager;
+use models_manager::ModelManager;
 use worker::JobWorker;
+
 use playback::{PlaybackController, PlaybackSnapshot};
 use scanner::scan_folder as scan_folder_impl;
 use tauri::State;
@@ -162,12 +165,16 @@ pub fn run() {
             let app_handle = app.handle();
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
-            let db_path = app_data_dir.join("rawrii.db");
             
+            let db_path = app_data_dir.join("rawrii.db");
             let db_manager = Arc::new(DbManager::new(db_path).expect("failed to init db"));
             app.manage(db_manager.clone());
 
-            let worker = Arc::new(JobWorker::new(db_manager, app_handle.clone()));
+            let model_manager = Arc::new(ModelManager::new(app_data_dir.clone()));
+            let _ = model_manager.ensure_models();
+            app.manage(model_manager.clone());
+
+            let worker = Arc::new(JobWorker::new(db_manager, app_handle.clone(), model_manager.clone()));
             tokio::spawn(async move {
                 worker.start().await;
             });
