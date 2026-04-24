@@ -39,6 +39,20 @@ pub struct VideoAsset {
     pub modified_at: String,
     pub health: HealthStatus,
     pub warnings: Vec<String>,
+    pub metadata: Option<MediaMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaMetadata {
+    pub duration_sec: f64,
+    pub creation_time: Option<String>,
+    pub width: u32,
+    pub height: u32,
+    pub codec: String,
+    pub has_audio: bool,
+    pub is_corrupt: bool,
+    pub stream_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +74,42 @@ pub struct RecordingPair {
     pub pairing_reason: String,
     pub source_folder: String,
     pub warnings: Vec<String>,
+    pub observations: Vec<ObservationEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationEvent {
+    pub id: String,
+    pub asset_id: String,
+    pub pair_id: String,
+    pub start_time_sec: f64,
+    pub end_time_sec: f64,
+    pub pair_canonical_time_sec: f64,
+    pub observation_type: ObservationType,
+    pub confidence: f64,
+    pub bounding_box: Option<Rect>,
+    pub is_user_confirmed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ObservationType {
+    Vehicle {
+        color: Option<String>,
+        vehicle_type: String,
+    },
+    LicensePlate {
+        text: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
