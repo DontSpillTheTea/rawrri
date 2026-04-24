@@ -13,3 +13,7 @@ The canonical source of truth for the project's goals, architecture, tech stack,
    - **Windows 11 Target:** The playback architecture explicitly relies on Win32 API child-window surfaces for `mpv`.
 3. **Dependencies:** Adhere to the established Tauri compatibility policy. Do not force numerical sync across crates; use valid configurations from `Cargo.lock`.
 4. **Testing Mandate:** If modifying parser or pairing heuristics, ensure changes are verified using the fixture samples defined via `.test_examples` criteria. Do not disable or bypass failing test cases without user confirmation.
+5. **Metadata & AI Pipeline:** 
+   - Media metadata extraction via `ffprobe` is authoritative over filename hints.
+   - All machine learning analysis must be local-first (ONNX Runtime).
+   - Analysis observations are timestamped and linked to the `RecordingPair` timeline.

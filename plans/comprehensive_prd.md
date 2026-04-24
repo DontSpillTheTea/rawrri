@@ -9,11 +9,14 @@ Build a Windows-first desktop application for extremely fast browsing and review
 3. Maintain smooth keyboard-first navigation and seeking.
 4. Provide synchronized dual-pane playback via embedded `mpv`.
 5. Keep the UI highly responsive when dealing with large folders.
+6. **Extract and utilize embedded file metadata** (via ffprobe) to guarantee accurate pairing and playback synchronization.
+7. **Generate searchable machine-learning observations** (e.g., vehicles, colors, license plates) from footage using local-first processing.
 
 ### Secondary Goals (Phase 2+)
 1. Mark in/out ranges and keep segments.
 2. Maintain a kept-segments decision list.
 3. Export segments via `ffmpeg` in minimal layout modes (side-by-side, front-only, rear-only).
+4. Export observation reports (CSV/JSON) alongside video clips.
 
 ### Non-goals (v0/v1)
 - Full nonlinear editor capabilities (NLE)
@@ -30,7 +33,8 @@ Build a Windows-first desktop application for extremely fast browsing and review
 - **Frontend:** React + TypeScript + Vite
 - **Backend/Core:** Rust
 - **Playback Engine:** `mpv` (via IPC and Win32 child surfaces)
-- **Metadata/Export:** `ffmpeg` / `ffprobe` (planned)
+- **Metadata/Export:** `ffmpeg` / `ffprobe` (Asynchronous worker pool)
+- **Local AI Inference:** ONNX Runtime (via `ort` Rust crate)
 - **Primary Target OS:** Windows 11 (MSVC builds)
 
 ### Architecture Diagram
@@ -42,6 +46,7 @@ graph TD;
         Browser[Recording Browser]
         Transport[Keyboard Transport Controls]
         PlaybackLayout[mpv Render Panes]
+        AnalysisPanel[Observation side panel]
     end
 
     subgraph Tauri Bridge
@@ -52,59 +57,62 @@ graph TD;
     subgraph Backend [Rust: src-tauri]
         Scanner[Folder Scanner & Ingest]
         Parser[Filename Parser]
-        Pairing[Nearest-Neighbor Pairing]
-        Metadata[ffprobe Metadata - Planned]
-        Cache[Local JSON Cache]
-        Playback[mpv Process Orchestrator via JSON IPC]
-        Export[ffmpeg Job Queue - Planned]
+        MetadataIngestion[ffprobe Background Worker]
+        Pairing[Hybrid Pairing Engine]
+        MLEngine[ONNX Runtime / ort]
+        JobQueue[SQLite Job Queue]
+        Cache[Local JSON/SQLite Cache]
+        Playback[mpv Process Orchestrator]
         
         Scanner --> Parser
-        Parser --> Pairing
-        Pairing --> Cache
+        Parser --> MetadataIngestion
+        MetadataIngestion --> Pairing
+        Pairing --> JobQueue
+        JobQueue --> MLEngine
+        MLEngine --> Cache
         Playback -- Win32 Embedded Surfaces --> PlaybackLayout
     end
 ```
 
 ### Core Data Models
-1. **VideoAsset:** Represents a single video file, tracking its `side` (Front/Rear), sequence, parsed timestamps, size, duration, health, and warnings.
-2. **RecordingPair:** Logical grouping of a front and rear `VideoAsset`, containing an estimated duration, a canonical start time, pairing confidence, pairing reason, and warnings.
-3. **PlaybackSnapshot:** Tracks the active playback session, playheads, offsets, load states, and synchronization deltas.
-4. **ScanResult & ScanDiagnostics:** Provides metrics and error reporting for a folder scan.
+1. **VideoAsset:** Represents a single video file. Now includes `MediaMetadata` derived from ffprobe.
+2. **MediaMetadata:** Authoritative file data: duration, creation_time, resolution, codec, and stream health.
+3. **RecordingPair:** Logical grouping of assets. Pairing confidence is now derived from a hybrid of filename and metadata signals.
+4. **ObservationEvent:** A timestamped detection (Vehicle, Plate, Color) with confidence scores and bounding boxes.
+5. **PlaybackSnapshot:** Tracks synchronized playheads and offsets across the pair.
 
 ---
 
 ## Patterns & Guidelines
 
 ### Development Conventions
-- **Tauri Dependency Policy:** Use compatible, published versions from the Tauri ecosystem rather than forcing strict numeric sameness. Use `src-tauri/Cargo.lock` for deterministic resolution.
-- **Backend/Frontend Isolation:** Keep all playback orchestration and file parsing tightly bounded within Rust modules. The frontend should act as a pure, reactive UI shell.
-- **Embedded Playback:** Dual `mpv` instances use JSON IPC for shared logical playhead, synchronized pause/seek controls, and periodic drift correction. Surfaces rely on Win32 child-window integration.
-- **Caching:** Scanned folders are cached in the local app-data JSON store to enable fast warm-open.
-- **Keyboard-first Navigation:** `Space` for play/pause, arrows/shift-arrows for seek, `J`/`K` or `Up`/`Down` for next/previous pair, `[`/`]` for in/out marks.
+- **Hybrid Pairing:** Use filename sequence as a hint, but use `creation_time` and `duration` from metadata as authoritative for synchronization and pairing validation.
+- **Local-First AI:** All ML inference (YOLOv8, OCR) must occur locally on the user's machine to preserve privacy and minimize latency.
+- **Staged Ingest:** 
+    1. Scan (Instant) -> 
+    2. Metadata Extraction (Background/Seconds) -> 
+    3. AI Analysis (Background/Minutes).
+- **Embedded Playback:** Dual `mpv` instances use JSON IPC for shared logical playhead and periodic drift correction.
 
 ### Filename Realities & Pairing (K6-Compatible Profile)
-- Baseline naming structure matches K6 cameras: `YYYYMMDD_HHMMSS_<sequence>_[F|R].MP4`
-- Front and rear timestamps often drift by ~1 second.
+- Baseline naming: `YYYYMMDD_HHMMSS_<sequence>_[F|R].MP4`
 - **Heuristic:**
-  1. Parse candidates; reject non-video files or unmatched formats (e.g., photos).
-  2. Split lists by side and sort by timestamp.
-  3. Map front assets to the nearest unassigned rear asset within a predefined time threshold.
-  4. Never double-assign sides. Partial pairs emit clear UI warnings.
+  1. Parse candidates via filename.
+  2. Enrich with `ffprobe` metadata.
+  3. Map front assets to nearest unassigned rear asset within threshold.
+  4. Reconcile filename timestamps with embedded `creation_time`. Flag mismatches.
 
 ---
 
 ## Guardrails, Rules, and Tests
 
 ### Guardrails & Rules
-- **No Blocking UI:** Heavy operations (e.g., large folder scans, upcoming ffprobe routines, ffmpeg exports) must run asynchronously in Rust, emitting progress events.
-- **Safety First for Files:** Read-only access for scans. When exporting is implemented, use robust error handling and avoid overwriting source files.
-- **Validation Dataset:** The `.test_examples` folder is a first-class local test suite. Any changes to parsing/pairing must be tested against this real-world naming set without regressing pair count expectations.
+- **No Blocking UI:** Heavy operations (scan, metadata, AI) MUST run asynchronously in Rust worker pools.
+- **Privacy:** License plates are PII. Local processing is mandatory. Provide a "Clear Analysis Cache" feature.
+- **Uncertainty UX:** Low-confidence ML detections (< 0.60) must be visually distinguished or obfuscated to prevent false reliance.
+- **Safety First for Files:** Read-only access for scans and analysis.
 
 ### Robust Checks and Tests
-1. **Filename Parser Checks:**
-   - Must successfully parse front (`_F`) and rear (`_R`) MP4 files, regardless of casing.
-   - Must reject non-matching profiles, non-video extensions (`.JPG`), or malformed dates/times.
-   - Example checks: `parse_k6_filename("20260323_114324_000023_F.MP4")` returns `VideoSide::Front`, sequence `23`, and accurate date-time.
-2. **Pairing Checks:**
-   - Must correctly handle front/rear pairs with slight timestamp drift (e.g., `20260323_114324` vs `20260323_114325`).
-   - Must generate partial pairings and surface exact failure reasons when one side is missing or exceeds the pairing threshold.
+1. **Metadata Reconciliation Tests:** Verify that the system correctly handles cases where filename timestamps and embedded metadata disagree.
+2. **Pairing Regression:** Ensure hybrid pairing maintains or improves the accuracy of the baseline K6-compatible parser.
+3. **OCR/Analysis Validation:** Use a small fixture of dashcam frames to ensure detection confidence remains stable across model updates.

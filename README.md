@@ -129,10 +129,10 @@ Policy for now: keep `.test_examples` as local developer fixture data unless oth
 
 - Embedded mpv surfaces currently rely on Win32 child-window integration (Windows-first path)
 - Embedded playback is still WIP:
-  - transport slider currently uses a fixed range and does not yet reflect true clip duration
+  - transport slider now accurately reflects clip duration via ffprobe metadata
   - occasional pane flashing/z-order contention can occur while embedded surfaces update
   - per-side live timecode display is not yet surfaced in the UI
-- No ffprobe metadata extraction yet (duration/resolution/codec placeholders)
+- AI analysis is currently a foundation with mock inference (full model integration pending)
 - Cache is basic and currently keyed by folder path
 - No export pipeline yet
 
@@ -143,6 +143,12 @@ Contributions are welcome. Please:
 1. Open an issue describing bug/feature intent.
 2. Keep PRs focused and small.
 3. Include tests for parser/pairing logic changes.
+4. Keep playback/export logic isolated behind modules.
+
+## License
+
+MIT (`LICENSE`)
+iring logic changes.
 4. Keep playback/export logic isolated behind modules.
 
 ## License
