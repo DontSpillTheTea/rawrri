@@ -9,12 +9,14 @@ import {
   playbackStop,
   playbackTogglePlayPause,
   scanFolder,
+  startAnalysis,
   updateVideoLayout
 } from "./lib/api";
 import { fmtClockHms, fmtDuration } from "./lib/format";
 import type { PlaybackSnapshot, RecordingPair, ScanResult, VideoRect, VideoSurfaceSnapshot } from "./types";
 import { RecordingList } from "./components/RecordingList";
 import { PairDetails } from "./components/PairDetails";
+import { ObservationPanel } from "./components/ObservationPanel";
 import { useKeyboardPairNav } from "./hooks/useKeyboardPairNav";
 
 const DEFAULT_THRESHOLD_MS = 3000;
@@ -29,12 +31,6 @@ function parseTimestamp(input: string | null): number | null {
   if (!input) return null;
   const parsed = Date.parse(input);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function formatGapLabel(gapSec: number | null): string | null {
-  if (gapSec === null || Number.isNaN(gapSec)) return null;
-  if (gapSec < 0) return `Overlap ${fmtClockHms(gapSec)}`;
-  return `Gap ${fmtClockHms(gapSec)}`;
 }
 
 function differsF64(left: number | null | undefined, right: number | null | undefined, epsilon = TIME_EPSILON_SEC): boolean {
@@ -79,6 +75,7 @@ export default function App() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [sliderPlayheadSec, setSliderPlayheadSec] = useState(0);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const seekDebounceRef = useRef<number | null>(null);
   const layoutDebounceRef = useRef<number | null>(null);
   const gapDiagnosticsSignatureRef = useRef<string | null>(null);
@@ -187,7 +184,7 @@ export default function App() {
         pairingThresholdMs: DEFAULT_THRESHOLD_MS
       });
       setScanResult(result);
-      const keepSelection = previousSelectedPairId && result.pairs.some((pair) => pair.id === previousSelectedPairId);
+      const keepSelection = previousSelectedPairId && result.pairs.some((pair: RecordingPair) => pair.id === previousSelectedPairId);
       setSelectedPairId(keepSelection ? previousSelectedPairId : (result.pairs[0]?.id ?? null));
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : String(scanError));
@@ -339,6 +336,30 @@ export default function App() {
           setPlaybackError(layoutErr instanceof Error ? layoutErr.message : String(layoutErr));
         });
     }, 30);
+  }
+
+  async function handleStartAnalysis() {
+    if (!selectedPair) return;
+    const front = selectedPair.frontAssetId ? assetsById.get(selectedPair.frontAssetId) : null;
+    if (!front) return;
+
+    setIsAnalyzing(true);
+    try {
+      const results = await startAnalysis(front.id, selectedPair.id, front.path);
+      setScanResult((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          pairs: prev.pairs.map((p) =>
+            p.id === selectedPair.id ? { ...p, observations: results } : p
+          )
+        };
+      });
+    } catch (err) {
+      setPlaybackError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   const resolvePairDurationSec = (pair: RecordingPair | null, useRuntimeForSelected: boolean): number | null => {
@@ -513,8 +534,8 @@ export default function App() {
             onVideoLayoutChange={handleVideoLayoutChange}
             pairStartLabel={pairStartLabel}
             pairEndLabel={pairEndLabel}
-            prevGapLabel={prevGapLabel}
-            nextGapLabel={nextGapLabel}
+            prevGapLabel={prevGapLabel ?? undefined}
+            nextGapLabel={nextGapLabel ?? undefined}
           />
           <div className="panel transport-panel">
             <div className="panel-title">Playback Transport</div>
@@ -585,6 +606,14 @@ export default function App() {
               <span>Shift+Left/Right: +/-10s</span>
             </div>
           </div>
+
+          <ObservationPanel
+            observations={selectedPair?.observations ?? []}
+            onSeek={seekTo}
+            isAnalyzing={isAnalyzing}
+            onStartAnalysis={handleStartAnalysis}
+          />
+
           {showDiagnostics ? (
             <div className="panel transport-panel">
               <div className="panel-title">Advanced Diagnostics</div>

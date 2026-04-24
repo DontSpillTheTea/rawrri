@@ -101,9 +101,59 @@ button:disabled {
 .workspace-column {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto 300px;
   gap: 8px;
   overflow: hidden;
+}
+
+.observation-panel {
+  min-height: 0;
+}
+
+.observation-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.obs-time {
+  font-family: monospace;
+  color: #5f8ccf;
+  flex: 0 0 auto;
+}
+
+.obs-content {
+  display: grid;
+  gap: 4px;
+}
+
+.obs-type {
+  font-weight: 500;
+}
+
+.obs-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #9eacbe;
+}
+
+.badge.info {
+  border-color: #5f8ccf;
+  color: #9ab9f1;
+}
+
+.asset-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.asset-filename {
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 
 .transport-panel {

@@ -29,9 +29,18 @@ function AssetCard({
         <div className="asset-missing">Missing</div>
       ) : (
         <div className="asset-details">
-          <div>{asset.filename}</div>
+          <div className="asset-filename">{asset.filename}</div>
           <div>Start: {fmtDate(asset.parsedTimestamp)}</div>
           <div>Duration: {fmtDuration(runtimeDurationSec ?? asset.durationSec)}</div>
+          {asset.metadata && (
+            <div className="asset-metadata">
+              <span className="badge info">{asset.metadata.width}x{asset.metadata.height}</span>
+              <span className="badge info">{asset.metadata.codec}</span>
+              {asset.metadata.hasAudio && <span className="badge ok">Audio</span>}
+              <span className="badge info">{asset.metadata.streamCount} streams</span>
+              {asset.metadata.isCorrupt && <span className="badge warn">Corrupt?</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -138,8 +147,8 @@ export function PairDetails({
         <div className="pair-summary-grid">
           <div>Start: {pairStartLabel ?? fmtDate(pair.canonicalStartTime)}</div>
           <div>End: {pairEndLabel ?? "Unknown"}</div>
-          <div>Front duration: {fmtDuration(playback?.frontDurationSec)}</div>
-          <div>Rear duration: {fmtDuration(playback?.rearDurationSec)}</div>
+          <div>Front duration: {fmtDuration(playback?.frontDurationSec ?? null)}</div>
+          <div>Rear duration: {fmtDuration(playback?.rearDurationSec ?? null)}</div>
           <div>Sync delta: {playback?.syncDeltaSec !== null ? `${playback?.syncDeltaSec.toFixed(2)}s` : "Unknown"}</div>
           <div>Previous: {prevGapLabel ?? "Unknown"}</div>
           <div>Next: {nextGapLabel ?? "Unknown"}</div>

@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PlaybackSnapshot, ScanResult, VideoRect, VideoSurfaceSnapshot } from "../types";
+import type {
+  ObservationEvent,
+  PlaybackSnapshot,
+  ScanResult,
+  VideoRect,
+  VideoSurfaceSnapshot
+} from "../types";
 
 interface ScanFolderArgs {
   rootPath: string;
@@ -8,7 +14,7 @@ interface ScanFolderArgs {
 }
 
 export async function scanFolder(args: ScanFolderArgs): Promise<ScanResult> {
-  return invoke<ScanResult>("scan_folder", args);
+  return invoke<ScanResult>("scan_folder", args as unknown as Record<string, unknown>);
 }
 
 interface PlaybackLoadPairArgs {
@@ -18,8 +24,9 @@ interface PlaybackLoadPairArgs {
 }
 
 export async function playbackLoadPair(args: PlaybackLoadPairArgs): Promise<PlaybackSnapshot> {
-  return invoke<PlaybackSnapshot>("playback_load_pair", args);
+  return invoke<PlaybackSnapshot>("playback_load_pair", args as unknown as Record<string, unknown>);
 }
+
 
 export async function playbackTogglePlayPause(): Promise<PlaybackSnapshot> {
   return invoke<PlaybackSnapshot>("playback_toggle_play_pause");
@@ -47,4 +54,8 @@ export async function playbackGetState(): Promise<PlaybackSnapshot> {
 
 export async function updateVideoLayout(front: VideoRect, rear: VideoRect): Promise<VideoSurfaceSnapshot> {
   return invoke<VideoSurfaceSnapshot>("update_video_layout", { front, rear });
+}
+
+export async function startAnalysis(assetId: string, pairId: string, path: string): Promise<ObservationEvent[]> {
+  return invoke<ObservationEvent[]>("start_analysis", { assetId, pairId, path });
 }

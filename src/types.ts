@@ -18,6 +18,18 @@ export interface VideoAsset {
   modifiedAt: string;
   health: HealthStatus;
   warnings: string[];
+  metadata: MediaMetadata | null;
+}
+
+export interface MediaMetadata {
+  durationSec: number;
+  creationTime: string | null;
+  width: number;
+  height: number;
+  codec: string;
+  hasAudio: boolean;
+  isCorrupt: boolean;
+  streamCount: number;
 }
 
 export interface RecordingPair {
@@ -30,6 +42,31 @@ export interface RecordingPair {
   pairingReason: string;
   sourceFolder: string;
   warnings: string[];
+  observations: ObservationEvent[];
+}
+
+export interface ObservationEvent {
+  id: string;
+  assetId: string;
+  pairId: string;
+  startTimeSec: number;
+  endTimeSec: number;
+  pairCanonicalTimeSec: number;
+  observationType: ObservationType;
+  confidence: number;
+  boundingBox: Rect | null;
+  isUserConfirmed: boolean;
+}
+
+export type ObservationType =
+  | { vehicle: { color: string | null; vehicleType: string } }
+  | { licensePlate: { text: string } };
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface ScanDiagnostics {
