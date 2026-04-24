@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  ObservationEvent,
   PlaybackSnapshot,
   ScanResult,
   VideoRect,
@@ -56,6 +55,6 @@ export async function updateVideoLayout(front: VideoRect, rear: VideoRect): Prom
   return invoke<VideoSurfaceSnapshot>("update_video_layout", { front, rear });
 }
 
-export async function startAnalysis(assetId: string, pairId: string, path: string): Promise<ObservationEvent[]> {
-  return invoke<ObservationEvent[]>("start_analysis", { assetId, pairId, path });
+export async function startAnalysis(assetId: string, pairId: string, path: string): Promise<string> {
+  return invoke<string>("start_analysis", { assetId, pairId, path });
 }

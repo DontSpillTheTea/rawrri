@@ -345,16 +345,9 @@ export default function App() {
 
     setIsAnalyzing(true);
     try {
-      const results = await startAnalysis(front.id, selectedPair.id, front.path);
-      setScanResult((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          pairs: prev.pairs.map((p) =>
-            p.id === selectedPair.id ? { ...p, observations: results } : p
-          )
-        };
-      });
+      const jobId = await startAnalysis(front.id, selectedPair.id, front.path);
+      console.info("AI analysis job started", { jobId });
+      // Results will come in via events later
     } catch (err) {
       setPlaybackError(err instanceof Error ? err.message : String(err));
     } finally {
