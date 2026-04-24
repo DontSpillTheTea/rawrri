@@ -56,7 +56,7 @@ pub fn build_pairs(assets: &[VideoAsset], config: PairingConfig, source_folder: 
             Some(idx) => {
                 used_rears[idx] = true;
                 let rear = rears[idx];
-                let pairing_reason = if best_delta_ms == 0 {
+                let mut pairing_reason = if best_delta_ms == 0 {
                     "exact_timestamp_match".to_string()
                 } else if candidates_within_threshold > 1 {
                     format!(
@@ -66,19 +66,38 @@ pub fn build_pairs(assets: &[VideoAsset], config: PairingConfig, source_folder: 
                 } else {
                     format!("nearest_neighbor_within_{}ms", config.threshold_ms)
                 };
+
+                if front.metadata.is_some() && rear.metadata.is_some() {
+                    pairing_reason.push_str(" (validated_by_metadata)");
+                }
+
+                let mut warnings = Vec::new();
+                if let (Some(f_meta), Some(r_meta)) = (&front.metadata, &rear.metadata) {
+                    let duration_delta = (f_meta.duration_sec - r_meta.duration_sec).abs();
+                    if duration_delta > 5.0 {
+                        warnings.push(format!("duration_mismatch_{:.1}s", duration_delta));
+                    }
+                }
+
                 pairs.push(RecordingPair {
                     id: deterministic_pair_id(Some(front.id.as_str()), Some(rear.id.as_str())),
                     front_asset_id: Some(front.id.clone()),
                     rear_asset_id: Some(rear.id.clone()),
-                    canonical_start_time: front
-                        .parsed_timestamp
-                        .clone()
-                        .or_else(|| rear.parsed_timestamp.clone()),
-                    estimated_duration_sec: front.duration_sec.or(rear.duration_sec),
-                    pairing_confidence: confidence(best_delta_ms, config.threshold_ms),
+                    canonical_start_time: get_best_timestamp(front)
+                        .or_else(|| get_best_timestamp(rear))
+                        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                    estimated_duration_sec: front
+                        .metadata
+                        .as_ref()
+                        .map(|m| m.duration_sec)
+                        .or(rear.metadata.as_ref().map(|m| m.duration_sec))
+                        .or(front.duration_sec)
+                        .or(rear.duration_sec),
+                    pairing_confidence: calculate_confidence(front, rear, best_delta_ms, config.threshold_ms),
                     pairing_reason,
                     source_folder: source_folder.to_string(),
-                    warnings: Vec::new(),
+                    warnings,
+                    observations: Vec::new(),
                 });
             }
             None => {
@@ -92,6 +111,7 @@ pub fn build_pairs(assets: &[VideoAsset], config: PairingConfig, source_folder: 
                     pairing_reason: "no_rear_candidate_within_threshold".to_string(),
                     source_folder: source_folder.to_string(),
                     warnings: vec!["rear_missing".to_string()],
+                    observations: Vec::new(),
                 });
             }
         }
@@ -111,6 +131,7 @@ pub fn build_pairs(assets: &[VideoAsset], config: PairingConfig, source_folder: 
             pairing_reason: "unpaired_rear_leftover".to_string(),
             source_folder: source_folder.to_string(),
             warnings: vec!["front_missing".to_string()],
+            observations: Vec::new(),
         });
     }
 
@@ -125,18 +146,39 @@ pub fn build_pairs(assets: &[VideoAsset], config: PairingConfig, source_folder: 
 }
 
 fn timestamp_delta_ms(front: &VideoAsset, rear: &VideoAsset) -> Option<i64> {
-    let front_ts = parse_dt(front.parsed_timestamp.as_deref())?;
-    let rear_ts = parse_dt(rear.parsed_timestamp.as_deref())?;
+    let front_ts = get_best_timestamp(front)?;
+    let rear_ts = get_best_timestamp(rear)?;
     Some((front_ts - rear_ts).num_milliseconds().abs())
+}
+
+fn get_best_timestamp(asset: &VideoAsset) -> Option<NaiveDateTime> {
+    // metadata creation_time is authoritative
+    if let Some(metadata) = &asset.metadata {
+        if let Some(ct) = &metadata.creation_time {
+            if let Some(dt) = parse_dt(Some(ct)) {
+                return Some(dt);
+            }
+        }
+    }
+    // fallback to filename parsed timestamp
+    parse_dt(asset.parsed_timestamp.as_deref())
 }
 
 fn parse_dt(value: Option<&str>) -> Option<NaiveDateTime> {
     let value = value?;
+    // try ISO 8601 first (metadata)
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.fZ") {
+        return Some(dt);
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%SZ") {
+        return Some(dt);
+    }
+    // then fallback to simple format (filename parser)
     NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S").ok()
 }
 
 fn asset_sort_key(asset: &VideoAsset) -> (Option<NaiveDateTime>, String) {
-    (parse_dt(asset.parsed_timestamp.as_deref()), asset.filename.clone())
+    (get_best_timestamp(asset), asset.filename.clone())
 }
 
 fn deterministic_pair_id(front_id: Option<&str>, rear_id: Option<&str>) -> String {
@@ -147,12 +189,31 @@ fn deterministic_pair_id(front_id: Option<&str>, rear_id: Option<&str>) -> Strin
     format!("pair_{:x}", hasher.finish())
 }
 
-fn confidence(delta_ms: i64, threshold_ms: i64) -> f64 {
-    if threshold_ms <= 0 {
-        return 1.0;
+fn calculate_confidence(front: &VideoAsset, rear: &VideoAsset, delta_ms: i64, threshold_ms: i64) -> f64 {
+    let mut score = 1.0;
+
+    // Time proximity factor (up to 70% of total score)
+    if threshold_ms > 0 {
+        let time_factor = (threshold_ms - delta_ms).max(0) as f64 / threshold_ms as f64;
+        score *= 0.3 + (0.7 * time_factor);
     }
-    let ratio = (threshold_ms - delta_ms).max(0) as f64 / threshold_ms as f64;
-    ratio.clamp(0.0, 1.0)
+
+    // Duration similarity factor (penalize if durations differ)
+    if let (Some(f_meta), Some(r_meta)) = (&front.metadata, &rear.metadata) {
+        let duration_delta = (f_meta.duration_sec - r_meta.duration_sec).abs();
+        let duration_factor = if duration_delta < 1.0 {
+            1.0
+        } else if duration_delta < 5.0 {
+            0.9
+        } else if duration_delta < 10.0 {
+            0.7
+        } else {
+            0.5
+        };
+        score *= duration_factor;
+    }
+
+    score.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -177,6 +238,7 @@ mod tests {
             modified_at: "2026-03-23T00:00:00Z".to_string(),
             health: HealthStatus::Ok,
             warnings: Vec::new(),
+            metadata: None,
         }
     }
 

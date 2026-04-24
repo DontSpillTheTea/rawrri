@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
 use std::env;
 use std::sync::Mutex;
 
@@ -226,6 +227,25 @@ impl VideoSurfaceManager {
 
     fn update_layout(&mut self, _front: VideoRect, _rear: VideoRect) -> Result<(), String> {
         Err("Embedded surfaces are currently supported on Windows only".to_string())
+    }
+
+    fn snapshot(&self) -> VideoSurfaceSnapshot {
+        VideoSurfaceSnapshot {
+            front_wid: None,
+            rear_wid: None,
+            parent_hwnd_raw: None,
+            front_hwnd_raw: None,
+            rear_hwnd_raw: None,
+            front_visible: false,
+            rear_visible: false,
+            front_window_rect: None,
+            rear_window_rect: None,
+            front_client_rect: None,
+            rear_client_rect: None,
+            last_front_layout: None,
+            last_rear_layout: None,
+            debug_visual_hosts: false,
+        }
     }
 }
 

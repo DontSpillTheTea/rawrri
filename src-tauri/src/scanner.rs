@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 
 use crate::{
     filename_parser::{parse_k6_filename_with_error, ParseFilenameError},
+    metadata::extract_metadata,
     models::{HealthStatus, ParseStatus, ScanDiagnostics, ScanResult, VideoAsset},
     pairing::{build_pairs, PairingConfig},
 };
@@ -81,9 +82,12 @@ pub fn scan_folder(root_path: &str, recursive: bool, pairing_threshold_ms: i64) 
             .map(|time| DateTime::<Utc>::from(time).to_rfc3339())
             .unwrap_or_else(|| Utc::now().to_rfc3339());
 
+        let file_path_str = entry.path().to_string_lossy().to_string();
+        let extracted_metadata = extract_metadata(&file_path_str).ok();
+
         assets.push(VideoAsset {
-            id: deterministic_asset_id(entry.path().to_string_lossy().as_ref()),
-            path: entry.path().to_string_lossy().to_string(),
+            id: deterministic_asset_id(&file_path_str),
+            path: file_path_str,
             filename: file_name,
             side: parsed.side,
             parse_status: ParseStatus::Parsed,
@@ -92,13 +96,17 @@ pub fn scan_folder(root_path: &str, recursive: bool, pairing_threshold_ms: i64) 
             parsed_timestamp: parsed
                 .timestamp
                 .map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()),
-            duration_sec: None,
-            resolution: None,
-            codec: None,
+            duration_sec: extracted_metadata.as_ref().map(|m| m.duration_sec),
+            resolution: extracted_metadata.as_ref().map(|m| crate::models::Resolution {
+                width: m.width,
+                height: m.height,
+            }),
+            codec: extracted_metadata.as_ref().map(|m| m.codec.clone()),
             size_bytes: metadata.len(),
             modified_at: modified_iso,
             health: HealthStatus::Ok,
             warnings: Vec::new(),
+            metadata: extracted_metadata,
         });
     }
 
