@@ -6,13 +6,15 @@ use chrono::{DateTime, Utc};
 use walkdir::WalkDir;
 
 use crate::{
+    db::DbManager,
     filename_parser::{parse_k6_filename_with_error, ParseFilenameError},
-    metadata::extract_metadata,
     models::{HealthStatus, ParseStatus, ScanDiagnostics, ScanResult, VideoAsset},
     pairing::{build_pairs, PairingConfig},
 };
+use std::sync::Arc;
+use uuid::Uuid;
 
-pub fn scan_folder(root_path: &str, recursive: bool, pairing_threshold_ms: i64) -> Result<ScanResult, String> {
+pub fn scan_folder(db: &Arc<DbManager>, root_path: &str, recursive: bool, pairing_threshold_ms: i64) -> Result<ScanResult, String> {
     let root = Path::new(root_path);
     if !root.exists() {
         return Err(format!("Path does not exist: {root_path}"));
@@ -83,10 +85,19 @@ pub fn scan_folder(root_path: &str, recursive: bool, pairing_threshold_ms: i64) 
             .unwrap_or_else(|| Utc::now().to_rfc3339());
 
         let file_path_str = entry.path().to_string_lossy().to_string();
-        let extracted_metadata = extract_metadata(&file_path_str).ok();
+        let asset_id = deterministic_asset_id(&file_path_str);
+
+        // Check cache first
+        let cached_metadata = db.get_metadata(&asset_id).ok().flatten();
+
+        if cached_metadata.is_none() {
+            // Enqueue metadata extraction job
+            let job_id = Uuid::new_v4().to_string();
+            let _ = db.enqueue_job(&job_id, "metadata_extraction", &asset_id, &file_path_str);
+        }
 
         assets.push(VideoAsset {
-            id: deterministic_asset_id(&file_path_str),
+            id: asset_id,
             path: file_path_str,
             filename: file_name,
             side: parsed.side,
@@ -96,17 +107,17 @@ pub fn scan_folder(root_path: &str, recursive: bool, pairing_threshold_ms: i64) 
             parsed_timestamp: parsed
                 .timestamp
                 .map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()),
-            duration_sec: extracted_metadata.as_ref().map(|m| m.duration_sec),
-            resolution: extracted_metadata.as_ref().map(|m| crate::models::Resolution {
+            duration_sec: cached_metadata.as_ref().map(|m| m.duration_sec),
+            resolution: cached_metadata.as_ref().map(|m| crate::models::Resolution {
                 width: m.width,
                 height: m.height,
             }),
-            codec: extracted_metadata.as_ref().map(|m| m.codec.clone()),
+            codec: cached_metadata.as_ref().map(|m| m.codec.clone()),
             size_bytes: metadata.len(),
             modified_at: modified_iso,
             health: HealthStatus::Ok,
             warnings: Vec::new(),
-            metadata: extracted_metadata,
+            metadata: cached_metadata,
         });
     }
 

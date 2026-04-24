@@ -1,5 +1,6 @@
 mod analysis;
 mod cache;
+mod db;
 mod export;
 mod filename_parser;
 mod logging;
@@ -11,27 +12,38 @@ mod scanner;
 mod settings;
 mod state;
 mod video_surface;
+mod worker;
 
-use analysis::AnalysisEngine;
+use std::sync::Arc;
+use db::DbManager;
+use worker::JobWorker;
 use playback::{PlaybackController, PlaybackSnapshot};
 use scanner::scan_folder as scan_folder_impl;
 use tauri::State;
+use uuid::Uuid;
 use video_surface::{VideoRect, VideoSurfaceController, VideoSurfaceSnapshot};
 
 #[tauri::command]
 async fn start_analysis(
+    db: State<'_, Arc<DbManager>>,
     _window: tauri::Window,
     asset_id: String,
     pair_id: String,
     path: String,
-) -> Result<Vec<models::ObservationEvent>, String> {
-    let engine = AnalysisEngine::new();
-    // This is currently a mock implementation
-    engine.analyze_asset(&asset_id, &pair_id, &path)
+) -> Result<String, String> {
+    let job_id = Uuid::new_v4().to_string();
+    db.enqueue_job(&job_id, "ai_analysis", &asset_id, &path)
+        .map_err(|e| e.to_string())?;
+    Ok(job_id)
 }
 
 #[tauri::command]
-fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms: Option<i64>) -> Result<models::ScanResult, String> {
+fn scan_folder(
+    db: State<'_, Arc<DbManager>>,
+    root_path: String,
+    recursive: Option<bool>,
+    pairing_threshold_ms: Option<i64>,
+) -> Result<models::ScanResult, String> {
     let recursive = recursive.unwrap_or(false);
     let threshold = pairing_threshold_ms.unwrap_or(3000);
 
@@ -41,7 +53,7 @@ fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms:
     }
 
     println!("scan_folder cache_miss folder={} recursive={} threshold_ms={}", root_path, recursive, threshold);
-    let result = scan_folder_impl(&root_path, recursive, threshold)?;
+    let result = scan_folder_impl(&db, &root_path, recursive, threshold)?;
     let _ = cache::save_cached_scan(&root_path, recursive, threshold, &result);
     Ok(result)
 }
@@ -145,6 +157,23 @@ pub fn run() {
     logging::init_logging();
 
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager;
+            let app_handle = app.handle();
+            let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
+            std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
+            let db_path = app_data_dir.join("rawrii.db");
+            
+            let db_manager = Arc::new(DbManager::new(db_path).expect("failed to init db"));
+            app.manage(db_manager.clone());
+
+            let worker = Arc::new(JobWorker::new(db_manager, app_handle.clone()));
+            tokio::spawn(async move {
+                worker.start().await;
+            });
+
+            Ok(())
+        })
         .manage(PlaybackController::default())
         .manage(VideoSurfaceController::default())
         .plugin(tauri_plugin_dialog::init())
