@@ -1,12 +1,10 @@
 use std::process::{Command, Stdio};
-use std::io::Read;
+use std::io::{BufReader, Read};
 use image::DynamicImage;
 use crate::models::{ObservationEvent, ObservationType, Rect};
 use uuid::Uuid;
 
-pub struct AnalysisEngine {
-    // Placeholder for ONNX sessions
-}
+pub struct AnalysisEngine {}
 
 impl AnalysisEngine {
     pub fn new() -> Self {
@@ -17,11 +15,13 @@ impl AnalysisEngine {
         let mut observations = Vec::new();
         
         // 1. Frame sampling at 2 fps
-        let frames = extract_frames(path, 2.0)?;
+        let fps = 2.0;
+        let frames = extract_frames(path, fps)?;
         
-        for (timestamp, frame) in frames {
+        for (idx, frame) in frames.iter().enumerate() {
+            let timestamp = idx as f64 / fps;
             // 2. Mock Detection (Placeholder for actual YOLOv8/OCR logic)
-            if let Some(obs) = self.run_inference(asset_id, pair_id, timestamp, &frame) {
+            if let Some(obs) = self.run_inference(asset_id, pair_id, timestamp, frame) {
                 observations.push(obs);
             }
         }
@@ -33,8 +33,6 @@ impl AnalysisEngine {
     }
 
     fn run_inference(&self, asset_id: &str, pair_id: &str, timestamp: f64, _frame: &DynamicImage) -> Option<ObservationEvent> {
-        // This will eventually call into ort/onnx
-        // For now, returning a mock observation if timestamp is around 5.0s
         if timestamp >= 5.0 && timestamp < 5.5 {
             return Some(ObservationEvent {
                 id: Uuid::new_v4().to_string(),
@@ -42,7 +40,7 @@ impl AnalysisEngine {
                 pair_id: pair_id.to_string(),
                 start_time_sec: timestamp,
                 end_time_sec: timestamp + 0.5,
-                pair_canonical_time_sec: timestamp, // Simplified mapping for now
+                pair_canonical_time_sec: timestamp,
                 observation_type: ObservationType::Vehicle {
                     color: Some("blue".to_string()),
                     vehicle_type: "sedan".to_string(),
@@ -56,8 +54,7 @@ impl AnalysisEngine {
     }
 }
 
-fn extract_frames(path: &str, fps: f64) -> Result<Vec<(f64, DynamicImage)>, String> {
-    // ffmpeg -i path -vf fps=2 -f image2pipe -vcodec ppm -
+fn extract_frames(path: &str, fps: f64) -> Result<Vec<DynamicImage>, String> {
     let mut child = Command::new("ffmpeg")
         .args(&[
             "-i", path,
@@ -71,34 +68,61 @@ fn extract_frames(path: &str, fps: f64) -> Result<Vec<(f64, DynamicImage)>, Stri
         .spawn()
         .map_err(|e| format!("failed to spawn ffmpeg: {}", e))?;
 
-    let mut stdout = child.stdout.take().ok_or("failed to open stdout")?;
-    let frames = Vec::new();
-    let _timestamp = 0.0;
-    let _interval = 1.0 / fps;
+    let stdout = child.stdout.take().ok_or("failed to open stdout")?;
+    let mut reader = BufReader::new(stdout);
+    let mut frames = Vec::new();
 
-    // PPM (Portable Pixmap) reader loop
-    // Note: This is a very basic way to read multiple frames from a pipe.
-    // For large files, we should probably use a more robust streaming approach.
     loop {
-        let mut header = [0u8; 15]; // PPM header is small but variable, this is a hack
-        if stdout.read_exact(&mut header).is_err() {
-            break;
+        // PPM P6 header format: P6\nWIDTH HEIGHT\nMAXVAL\n
+        let mut header = String::new();
+        let mut line = Vec::new();
+        
+        // Read "P6\n"
+        if read_line(&mut reader, &mut line).is_err() || line.is_empty() { break; }
+        header.push_str(&String::from_utf8_lossy(&line));
+        if !header.starts_with("P6") { break; }
+
+        // Read WIDTH HEIGHT
+        line.clear();
+        if read_line(&mut reader, &mut line).is_err() { break; }
+        let dims = String::from_utf8_lossy(&line);
+        let parts: Vec<&str> = dims.split_whitespace().collect();
+        if parts.len() < 2 { break; }
+        let width: u32 = parts[0].parse().map_err(|_| "invalid width")?;
+        let height: u32 = parts[1].parse().map_err(|_| "invalid height")?;
+
+        // Read MAXVAL (usually 255)
+        line.clear();
+        if read_line(&mut reader, &mut line).is_err() { break; }
+
+        // Read RGB data
+        let data_size = (width * height * 3) as usize;
+        let mut buffer = vec![0u8; data_size];
+        if reader.read_exact(&mut buffer).is_err() { break; }
+
+        if let Some(img) = image::RgbImage::from_raw(width, height, buffer) {
+            frames.push(DynamicImage::ImageRgb8(img));
         }
-        
-        // Reconstruct the frame (header + body)
-        // ImageReader can't easily read from a middle of a stream without knowing size
-        // This part is TRICKY with image2pipe and ppm. 
-        // Alternative: extract to temp files or use a better-structured format.
-        
-        // For the sake of this prototype, let's assume we extract one frame for now 
-        // to verify the pipe works, then refine.
-        break; 
     }
 
+    let _ = child.wait();
     Ok(frames)
 }
 
+fn read_line<R: Read>(reader: &mut BufReader<R>, buffer: &mut Vec<u8>) -> std::io::Result<usize> {
+    let mut byte = [0u8; 1];
+    let mut total = 0;
+    loop {
+        reader.read_exact(&mut byte)?;
+        total += 1;
+        if byte[0] == b'\n' {
+            break;
+        }
+        buffer.push(byte[0]);
+    }
+    Ok(total)
+}
+
 fn debounce_observations(observations: Vec<ObservationEvent>) -> Vec<ObservationEvent> {
-    // Merge continuous detections of the same type/location
     observations
 }
