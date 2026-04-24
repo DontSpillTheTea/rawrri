@@ -11,37 +11,30 @@ Many dashcam systems store front and rear streams as separate files. Reviewing f
 Early prototype (Milestone 0/1 foundation):
 
 - Tauri + React + TypeScript + Rust project layout
-- Folder scan command in Rust
+- Folder scan command in Rust with SQLite-backed async metadata extraction
 - K6-compatible filename parsing and deterministic front/rear pairing heuristic
 - Pair list UI with selection and missing-side warnings
 - Keyboard navigation (`J/K` or `Up/Down`) for previous/next pair
 - Dual mpv playback control via two IPC-driven player instances embedded in the main app window
-
-## Naming assumptions (current profile)
-
-Current built-in profile is K6-compatible naming:
-
-- `YYYYMMDD_HHMMSS_<sequence>_F.MP4`
-- `YYYYMMDD_HHMMSS_<sequence>_R.MP4`
-
-Examples:
-
-- `20260323_114324_000023_F.MP4`
-- `20260323_114325_000024_R.MP4`
+- Local-first AI foundation (ONNX Runtime) for vehicle and license plate discovery
 
 ## Tech stack
 
 - Desktop shell: Tauri
 - Frontend: React + TypeScript + Vite
 - Backend/core: Rust
-- Planned playback engine: mpv
-- Planned export engine: ffmpeg / ffprobe
+- Playback engine: mpv
+- Export/Metadata: ffmpeg / ffprobe
+- Database: SQLite (via rusqlite)
+- AI Inference: ONNX Runtime (via ort)
 
 ## Setup
 
+`rawrii` is a Windows-first application, but development is frequently performed under **WSL2**.
+
 ### Windows prerequisites
 
-`rawrii` targets Windows 11 first and uses Rust MSVC builds under Tauri.
+Targeting Windows 11 using Rust MSVC builds.
 
 Install:
 
@@ -52,7 +45,8 @@ Install:
   - MSVC v143 toolset
   - Windows 10/11 SDK
 - Microsoft Edge WebView2 runtime
-- mpv (required for Milestone 2 playback)
+- mpv (required for playback)
+- ffmpeg & ffprobe (required for metadata ingestion and AI analysis)
 
 Quick verification:
 
@@ -62,58 +56,26 @@ npm --version
 cargo --version
 rustup show
 mpv --version
+ffmpeg -version
+ffprobe -version
 ```
 
-Install mpv on Windows with Scoop:
+Install dependencies on Windows with Scoop:
 
 ```bash
-scoop install mpv
+scoop install mpv ffmpeg
 ```
 
-If you see `link.exe not found` during `npm run tauri:dev`, install/repair Visual Studio Build Tools with the C++ workload above and restart the terminal so `link.exe` is on PATH.
+### WSL2 Development (Linux)
 
-### Tauri dependency compatibility policy
-
-Tauri Rust crates and npm packages do not always share identical version numbers. Use published, mutually compatible versions from the current Tauri ecosystem rather than forcing numeric sameness.
-
-Current known-good set in this repo:
-
-- npm: `@tauri-apps/cli` `^2.10.1`
-- npm: `@tauri-apps/api` `^2.10.1`
-- npm: `@tauri-apps/plugin-dialog` `^2.6.0`
-- Rust: `tauri` `2.10.3`
-- Rust: `tauri-build` `2.5.6`
-- Rust: `tauri-plugin-dialog` `2.6.0`
-
-If Cargo reports a version does not exist (for example `tauri-build = "^2.10.0"`), switch to a published compatible crate version instead of trying to numerically align all packages.
-
-`src-tauri/Cargo.lock` is kept in the repo for deterministic Tauri/Rust resolution and should remain committed.
-
-### Install and run
+If developing under WSL2, you need to install the following Linux system dependencies to compile the Tauri backend and run tests:
 
 ```bash
-npm install
-npm run tauri:dev
+sudo apt-get update
+sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev ffmpeg
 ```
 
-Build:
-
-```bash
-npm run tauri:build
-```
-
-## Roadmap
-
-- Milestone 0: bootstrap and docs
-- Milestone 1: scan + parse + pair + browse
-- Milestone 2: dual mpv playback with synchronized controls
-- Milestone 3: speed polish (cache warm-open, virtualization, async metadata)
-- Milestone 4: kept segments (in/out decision list)
-- Milestone 5: ffmpeg export (side-by-side/front/rear modes)
-
-See `docs/roadmap.md` for details.
-
-Planned direction: expand camera profiles beyond the current K6-compatible baseline.
+*Note: While the app builds on Linux/WSL2, the embedded mpv playback surfaces currently rely on Win32 child-window integration and are supported on Windows only.*
 
 ## Real sample validation (`.test_examples`)
 
@@ -123,18 +85,11 @@ The project now treats `.test_examples` as a first-class local validation datase
 - verify pair counts and warnings against expected file reality
 - run parser/pairing unit tests that include examples derived from this folder
 
-Policy for now: keep `.test_examples` as local developer fixture data unless otherwise decided for repository sharing size/privacy.
+## Documentation
 
-## Current limitations
-
-- Embedded mpv surfaces currently rely on Win32 child-window integration (Windows-first path)
-- Embedded playback is still WIP:
-  - transport slider now accurately reflects clip duration via ffprobe metadata
-  - occasional pane flashing/z-order contention can occur while embedded surfaces update
-  - per-side live timecode display is not yet surfaced in the UI
-- AI analysis is currently a foundation with mock inference (full model integration pending)
-- Cache is basic and currently keyed by folder path
-- No export pipeline yet
+Detailed goals and architecture can be found in:
+- [Product Requirements Document (PRD)](docs/prd.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Contributing
 
@@ -143,12 +98,6 @@ Contributions are welcome. Please:
 1. Open an issue describing bug/feature intent.
 2. Keep PRs focused and small.
 3. Include tests for parser/pairing logic changes.
-4. Keep playback/export logic isolated behind modules.
-
-## License
-
-MIT (`LICENSE`)
-iring logic changes.
 4. Keep playback/export logic isolated behind modules.
 
 ## License
