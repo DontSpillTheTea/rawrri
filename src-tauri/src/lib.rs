@@ -1,3 +1,4 @@
+mod analysis;
 mod cache;
 mod export;
 mod filename_parser;
@@ -11,10 +12,23 @@ mod settings;
 mod state;
 mod video_surface;
 
+use analysis::AnalysisEngine;
 use playback::{PlaybackController, PlaybackSnapshot};
 use scanner::scan_folder as scan_folder_impl;
 use tauri::State;
 use video_surface::{VideoRect, VideoSurfaceController, VideoSurfaceSnapshot};
+
+#[tauri::command]
+async fn start_analysis(
+    _window: tauri::Window,
+    asset_id: String,
+    pair_id: String,
+    path: String,
+) -> Result<Vec<models::ObservationEvent>, String> {
+    let engine = AnalysisEngine::new();
+    // This is currently a mock implementation
+    engine.analyze_asset(&asset_id, &pair_id, &path)
+}
 
 #[tauri::command]
 fn scan_folder(root_path: String, recursive: Option<bool>, pairing_threshold_ms: Option<i64>) -> Result<models::ScanResult, String> {
@@ -143,7 +157,8 @@ pub fn run() {
             playback_set_mute,
             playback_stop,
             playback_get_state,
-            update_video_layout
+            update_video_layout,
+            start_analysis
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
